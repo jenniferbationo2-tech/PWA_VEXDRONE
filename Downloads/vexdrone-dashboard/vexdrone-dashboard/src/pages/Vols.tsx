@@ -1,0 +1,163 @@
+import { useQuery } from "@tanstack/react-query";
+import { MapContainer, TileLayer, Marker } from "react-leaflet";
+import L from "leaflet";
+import { Wifi, WifiOff } from "lucide-react";
+import { api } from "@/lib/api/client";
+import { mockMissions } from "@/lib/api/mockData";
+import type { FlightStatus } from "@/lib/api/types";
+import { cn } from "@/lib/utils";
+
+const STEPS: { value: FlightStatus; label: string }[] = [
+  { value: "en_attente", label: "En attente" },
+  { value: "en_cours", label: "En cours" },
+  { value: "terminee", label: "Terminée" },
+];
+
+const droneMarkerIcon = L.divIcon({
+  className: "",
+  html: `<div style="
+    width:16px;height:16px;border-radius:9999px;
+    background:#1B365D;border:2.5px solid white;
+    box-shadow:0 1px 4px rgba(27,54,93,0.4);
+  "></div>`,
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+});
+
+function missionName(missionId: string) {
+  return mockMissions.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
+}
+
+export function Vols() {
+  const { data: flight, isLoading, isError } = useQuery({
+    queryKey: ["active-flight"],
+    queryFn: api.getActiveFlight,
+    refetchInterval: 4000,
+  });
+
+  if (isLoading) {
+    return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;
+  }
+
+  if (isError || !flight) {
+    return (
+      <div className="flex h-[50vh] flex-col items-center justify-center text-center">
+        <p className="font-display text-h3">Aucun vol en cours</p>
+        <p className="mt-1 text-brand-gray">Lance une mission pour voir la télémétrie en direct ici.</p>
+      </div>
+    );
+  }
+
+  const currentStepIndex = STEPS.findIndex((s) => s.value === flight.status);
+  const connected = flight.droneConnection !== "hors_ligne";
+
+  return (
+    <div>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1>Vol en cours</h1>
+          <p className="mt-0.5 text-[14px] text-brand-gray">Mission : {missionName(flight.missionId)}</p>
+        </div>
+        <span
+          className={cn(
+            "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-semibold",
+            connected ? "bg-status-success/10 text-status-success" : "bg-brand-orange/10 text-brand-orange"
+          )}
+        >
+          {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
+          {connected
+            ? `Drone connecté · ${flight.droneConnection === "wifi" ? "Wi-Fi" : "4G"}`
+            : "Drone hors ligne"}
+        </span>
+      </div>
+
+      <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+        <div className="mb-6 flex items-center">
+          {STEPS.map((step, i) => (
+            <div key={step.value} className="flex flex-1 items-center last:flex-none">
+              <div className="flex flex-col items-center gap-2">
+                <div
+                  className={cn(
+                    "h-3 w-3 rounded-full",
+                    i <= currentStepIndex ? "bg-brand-blue" : "bg-brand-gray/25"
+                  )}
+                />
+                <span
+                  className={cn(
+                    "text-[12px] font-medium",
+                    i === currentStepIndex ? "text-brand-blue-dark" : "text-brand-gray"
+                  )}
+                >
+                  {step.label}
+                </span>
+              </div>
+              {i < STEPS.length - 1 && (
+                <div className={cn("mx-2 h-px flex-1", i < currentStepIndex ? "bg-brand-blue" : "bg-brand-gray/25")} />
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-3 divide-x divide-brand-blue/[0.06] text-center">
+          <div>
+            <div className="text-[13px] text-brand-gray">Altitude</div>
+            <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">{flight.altitude} m</div>
+          </div>
+          <div>
+            <div className="text-[13px] text-brand-gray">Batterie</div>
+            <div
+              className={cn(
+                "mt-1 font-display text-[26px] font-bold",
+                flight.battery < 20 ? "text-brand-orange" : "text-brand-blue-dark"
+              )}
+            >
+              {flight.battery}%
+            </div>
+          </div>
+          <div>
+            <div className="text-[13px] text-brand-gray">Images</div>
+            <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">
+              {flight.imagesCaptured}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+        <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+          <h3 className="mb-4">Images captées en direct</h3>
+          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            {Array.from({ length: Math.min(8, flight.imagesCaptured) }).map((_, i) => (
+              <div
+                key={i}
+                className="flex aspect-square items-center justify-center rounded-md bg-brand-off-white text-[11px] text-brand-gray"
+              >
+                image drone
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+          <h3 className="mb-4">Position du drone</h3>
+          <div className="overflow-hidden rounded-md">
+            <MapContainer
+              center={[flight.gps.lat, flight.gps.lng]}
+              zoom={15}
+              zoomControl={false}
+              dragging={false}
+              scrollWheelZoom={false}
+              style={{ height: 180, width: "100%" }}
+            >
+              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+              <Marker position={[flight.gps.lat, flight.gps.lng]} icon={droneMarkerIcon} />
+            </MapContainer>
+          </div>
+          <p className="mt-3 text-center text-[13px] text-brand-gray">
+            {flight.gps.lat.toFixed(4)}°N, {flight.gps.lng.toFixed(4)}°O
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}

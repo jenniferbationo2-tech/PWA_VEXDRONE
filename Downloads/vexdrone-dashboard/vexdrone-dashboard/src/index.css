@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-off-white text-brand-blue-dark font-body text-body;
+  }
+  h1 {
+    @apply font-display text-h1 text-brand-blue;
+  }
+  h2 {
+    @apply font-display text-h2 text-brand-blue;
+  }
+  h3 {
+    @apply font-display text-h3 text-brand-blue;
+  }
+  /* Accessibilité — focus clavier toujours visible (règle qualité, pas dans la charte mais requis) */
+  :focus-visible {
+    outline: 2px solid #e37222;
+    outline-offset: 2px;
+  }
+}
