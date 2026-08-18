@@ -1,6 +1,6 @@
 import type { Anomaly, DashboardSummary, Flight, Mission, NewMissionInput, Report } from "./types";
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
-import { getAccessToken, refreshAccessToken } from "./auth";
+import { getStoredCsrfToken } from "./auth";
 import { toAnomaly, toBackendMissionStatus, toMission } from "./mappers";
 import type { BackendAnomaly, BackendDashboardStats, BackendMission } from "./backendTypes";
 
@@ -11,22 +11,21 @@ function delay<T>(data: T, ms = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(data), ms));
 }
 
-async function rawFetch(path: string, options: RequestInit): Promise<Response> {
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
-  const token = getAccessToken();
-  if (token) headers.set("Authorization", `Bearer ${token}`);
-  return fetch(`${BASE_URL}${path}`, { ...options, headers });
-}
 
-async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
-  let res = await rawFetch(path, options);
-
-  // Jeton d'acces expire (courte duree de vie) : on le renouvelle une fois
-  // via le refresh token puis on rejoue la requete, plutot que de deconnecter.
-  if (res.status === 401 && (await refreshAccessToken())) {
-    res = await rawFetch(path, options);
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const token = getStoredCsrfToken();
+    if (token) headers.set("X-CSRF-Token", token);
   }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
 
   if (!res.ok) throw new Error(`API error ${res.status} on ${path}`);
   if (res.status === 204) return undefined as T;
