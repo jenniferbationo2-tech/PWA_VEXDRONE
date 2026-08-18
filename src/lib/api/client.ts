@@ -1,5 +1,8 @@
 import type { Anomaly, DashboardSummary, Flight, Mission, NewMissionInput, Report } from "./types";
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
+import { getStoredCsrfToken } from "./auth";
+import { toAnomaly, toBackendMissionStatus, toMission } from "./mappers";
+import type { BackendAnomaly, BackendDashboardStats, BackendMission } from "./backendTypes";
 
 const USE_MOCKS = !import.meta.env.VITE_API_BASE_URL;
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -8,36 +11,105 @@ function delay<T>(data: T, ms = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(data), ms));
 }
 
-async function apiFetch<T>(path: string): Promise<T> {
+async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
+  const method = (options.method ?? "GET").toUpperCase();
+  const headers = new Headers(options.headers);
+  headers.set("Content-Type", "application/json");
+
+  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+    const token = getStoredCsrfToken();
+    if (token) headers.set("X-CSRF-Token", token);
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { "Content-Type": "application/json" },
+    ...options,
+    headers,
     credentials: "include",
   });
+
   if (!res.ok) throw new Error(`API error ${res.status} on ${path}`);
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
-export const api = {
-  getDashboardSummary: (): Promise<DashboardSummary> =>
-    USE_MOCKS ? delay(mockDashboardSummary) : apiFetch("/api/dashboard/summary"),
+function missionPayload(input: NewMissionInput) {
+  return {
+    titre: input.name,
+    zone: input.zone,
+    date_mission: input.dateDebut,
+    statut: toBackendMissionStatus(input.status),
+    description: input.description,
+  };
+}
 
-  getMissions: (): Promise<Mission[]> =>
-    USE_MOCKS ? delay(mockMissions) : apiFetch("/api/missions"),
+// Les stats d'anomalies n'ont pas d'endpoint dedie : recalculees cote client
+// a partir de /anomalies/. Le module drone expose lui /dashboard/stats pour
+// le reste (flotte, vols du jour, delta alertes critiques).
+async function computeAnomalyStats() {
+  const raw = await apiFetch<{ data: BackendAnomaly[] }>("/api/v1/anomalies/?items_per_page=100");
+  const anomalies = raw.data.map((a) => toAnomaly(a));
+
+  const severityBreakdown: DashboardSummary["severityBreakdown"] = (["eleve", "moyen", "faible"] as const).map(
+    (severity) => ({ severity, count: anomalies.filter((a) => a.severity === severity).length })
+  );
+
+  const trendByDay = new Map<string, number>();
+  for (const a of anomalies) {
+    const day = a.detectedAt.slice(0, 10);
+    trendByDay.set(day, (trendByDay.get(day) ?? 0) + 1);
+  }
+  const anomaliesTrend = [...trendByDay.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, count]) => ({ date, count }));
+
+  const recentAlerts = [...anomalies].sort((a, b) => b.detectedAt.localeCompare(a.detectedAt)).slice(0, 5);
+
+  return {
+    criticalAlerts: anomalies.filter((a) => a.severity === "eleve" && a.status === "non_traitee").length,
+    anomaliesResolved: anomalies.filter((a) => a.status === "traitee").length,
+    anomaliesResolvedTotal: anomalies.length,
+    severityBreakdown,
+    anomaliesTrend,
+    recentAlerts,
+  };
+}
+
+export const api = {
+  getDashboardSummary: async (): Promise<DashboardSummary> => {
+    if (USE_MOCKS) return delay(mockDashboardSummary);
+    const [stats, fleet] = await Promise.all([
+      computeAnomalyStats(),
+      apiFetch<BackendDashboardStats>("/api/v1/dashboard/stats"),
+    ]);
+    return {
+      flightsToday: fleet.flights_today,
+      flightsTodayDelta: 0, // pas d'historique j-1 sur les vols cote backend
+      fleetTotal: fleet.fleet_total,
+      fleetActive: fleet.fleet_active,
+      fleetAvailability:
+        fleet.fleet_total > 0 ? Math.round((fleet.fleet_availability / fleet.fleet_total) * 100) : 0,
+      criticalAlertsDelta: fleet.critical_alerts_delta,
+      ...stats,
+    };
+  },
+
+  getMissions: async (): Promise<Mission[]> => {
+    if (USE_MOCKS) return delay(mockMissions);
+    const raw = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
+    return raw.data.map(toMission);
+  },
 
   createMission: async (input: NewMissionInput): Promise<Mission> => {
     if (USE_MOCKS) {
       const newMission: Mission = { ...input, id: `m-${Date.now()}` };
-      mockMissions.unshift(newMission); // ajoutée en tête de liste
+      mockMissions.unshift(newMission);
       return delay(newMission, 400);
     }
-    const res = await fetch(`${BASE_URL}/api/missions`, {
+    const raw = await apiFetch<BackendMission>("/api/v1/missions/", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(input),
+      body: JSON.stringify(missionPayload(input)),
     });
-    if (!res.ok) throw new Error("Impossible de créer la mission");
-    return res.json();
+    return toMission(raw);
   },
 
   updateMission: async (id: string, input: NewMissionInput): Promise<Mission> => {
@@ -47,14 +119,13 @@ export const api = {
       mockMissions[index] = { ...input, id };
       return delay(mockMissions[index], 400);
     }
-    const res = await fetch(`${BASE_URL}/api/missions/${id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      credentials: "include",
-      body: JSON.stringify(input),
+    // Le PATCH renvoie 204 sans corps : on relit la mission a jour ensuite.
+    await apiFetch<void>(`/api/v1/missions/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(missionPayload(input)),
     });
-    if (!res.ok) throw new Error("Impossible de modifier la mission");
-    return res.json();
+    const raw = await apiFetch<BackendMission>(`/api/v1/missions/${id}`);
+    return toMission(raw);
   },
 
   deleteMission: async (id: string): Promise<void> => {
@@ -64,18 +135,17 @@ export const api = {
       mockMissions.splice(index, 1);
       return delay(undefined, 300);
     }
-    const res = await fetch(`${BASE_URL}/api/missions/${id}`, {
-      method: "DELETE",
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Impossible de supprimer la mission");
+    await apiFetch<void>(`/api/v1/missions/${id}`, { method: "DELETE" });
   },
 
-  getReports: (): Promise<Report[]> =>
-    USE_MOCKS ? delay(mockReports) : apiFetch("/api/reports"),
+  // Pas encore d'endpoint rapports cote backend : reste mocke meme en mode reel.
+  getReports: (): Promise<Report[]> => delay(mockReports),
 
-  getAnomalies: (): Promise<Anomaly[]> =>
-    USE_MOCKS ? delay(mockAnomalies) : apiFetch("/api/anomalies"),
+  getAnomalies: async (): Promise<Anomaly[]> => {
+    if (USE_MOCKS) return delay(mockAnomalies);
+    const raw = await apiFetch<{ data: BackendAnomaly[] }>("/api/v1/anomalies/");
+    return raw.data.map((a) => toAnomaly(a));
+  },
 
   markAnomalyTreated: async (id: string): Promise<Anomaly> => {
     if (USE_MOCKS) {
@@ -84,21 +154,22 @@ export const api = {
       anomaly.status = "traitee";
       return delay(anomaly);
     }
-    const res = await fetch(`${BASE_URL}/api/anomalies/${id}/traiter`, { method: "PATCH" });
-    if (!res.ok) throw new Error("Failed to mark anomaly as treated");
-    return res.json();
+    await apiFetch<void>(`/api/v1/anomalies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ validee_par_humain: true }),
+    });
+    const raw = await apiFetch<BackendAnomaly>(`/api/v1/anomalies/${id}`);
+    return toAnomaly(raw);
   },
 
+  // Pas encore d'endpoint vol actif cote backend : reste mocke meme en mode reel.
   getActiveFlight: (): Promise<Flight> => {
-    if (USE_MOCKS) {
-      mockFlight.imagesCaptured += Math.floor(Math.random() * 2);
-      mockFlight.battery = Math.max(5, mockFlight.battery - (Math.random() < 0.3 ? 1 : 0));
-      mockFlight.gps = {
-        lat: mockFlight.gps.lat + (Math.random() - 0.5) * 0.0006,
-        lng: mockFlight.gps.lng + (Math.random() - 0.5) * 0.0006,
-      };
-      return delay(mockFlight, 150);
-    }
-    return apiFetch("/api/flights/active");
+    mockFlight.imagesCaptured += Math.floor(Math.random() * 2);
+    mockFlight.battery = Math.max(5, mockFlight.battery - (Math.random() < 0.3 ? 1 : 0));
+    mockFlight.gps = {
+      lat: mockFlight.gps.lat + (Math.random() - 0.5) * 0.0006,
+      lng: mockFlight.gps.lng + (Math.random() - 0.5) * 0.0006,
+    };
+    return delay(mockFlight, 150);
   },
 };

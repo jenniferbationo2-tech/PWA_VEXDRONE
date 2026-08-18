@@ -6,39 +6,31 @@ import { useAuth } from "@/lib/Auth/AuthContext";
 
 export function Login() {
   const navigate = useNavigate();
-   const { login } = useAuth();
+  const { login } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  
 
- 
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setError(null);
 
-  // Pas encore de backend d'auth (JWT) — ce handler simule une connexion.
-  // À remplacer par un vrai appel à api.login(username, password) dès que
-  // l'endpoint existe côté FastAPI, avec stockage du token (cookie httpOnly
-  // recommandé plutôt que localStorage, à discuter avec le backend).
-  // src/pages/Login.tsx
-async function handleSubmit(e: React.FormEvent) {
-  e.preventDefault();
-  setError(null);
+    if (!username || !password) {
+      setError("Merci de renseigner l'identifiant et le mot de passe.");
+      return;
+    }
 
-  if (!username || !password) {
-    setError("Merci de renseigner l'identifiant et le mot de passe.");
-    return;
+    setLoading(true);
+    try {
+      await login(username, password);
+      navigate("/");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Identifiants incorrects.");
+    } finally {
+      setLoading(false);
+    }
   }
-
-  setLoading(true);
-  try {
-    await login(username, password);
-    navigate("/");
-  } catch (err) {
-    setError("Identifiants incorrects.");
-  } finally {
-    setLoading(false);
-  }
-}
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-brand-blue-dark px-4">

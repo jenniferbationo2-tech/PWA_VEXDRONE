@@ -1,14 +1,17 @@
-const BASE_URL = "http://127.0.0.1:8000/api/v1";
-const USE_MOCK = import.meta.env.VITE_USE_MOCK_AUTH === "true";
+const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
+const USE_MOCK = !import.meta.env.VITE_API_BASE_URL;
 
-function getCsrfToken(): string | null {
-  const match = document.cookie.match(/fastapi-csrf-token=([^;]+)/);
-  return match ? match[1] : null;
+// Le token CSRF vit en mémoire, pas dans un cookie lisible par JS.
+// Le backend le retourne dans le corps de /auth/login, pas dans un cookie.
+let csrfToken: string | null = null;
+
+export function getStoredCsrfToken(): string | null {
+  return csrfToken;
 }
 
 // ---- Version mock (sans backend) ----
 async function mockLogin(username: string, password: string) {
-  await new Promise((r) => setTimeout(r, 500)); // simule la latence réseau
+  await new Promise((r) => setTimeout(r, 500));
   if (!username || !password) throw new Error("Identifiants incorrects");
   sessionStorage.setItem("vexdrone_mock_user", username);
 }
@@ -25,26 +28,38 @@ async function mockGetMe() {
 
 // ---- Version réelle (avec backend FastAPI) ----
 async function realLogin(username: string, password: string) {
-  const res = await fetch(`${BASE_URL}/auth/login`, {
+  const body = new URLSearchParams({ username, password });
+
+  const res = await fetch(`${BASE_URL}/api/v1/auth/login`, {
     method: "POST",
     credentials: "include",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ username, password }),
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
   });
-  if (!res.ok) throw new Error("Identifiants incorrects");
-  return res.json();
+
+  if (!res.ok) {
+    const body = await res.json().catch(() => null);
+    throw new Error(body?.detail ?? "Identifiants incorrects");
+  }
+
+  const data = await res.json();
+  csrfToken = data.csrf_token;
+  return data;
 }
 
 async function realLogout() {
-  await fetch(`${BASE_URL}/auth/logout`, {
+  await fetch(`${BASE_URL}/api/v1/auth/logout`, {
     method: "POST",
     credentials: "include",
-    headers: { "X-CSRF-Token": getCsrfToken() ?? "" },
+    headers: { "X-CSRF-Token": csrfToken ?? "" },
   });
+  csrfToken = null;
 }
 
 async function realGetMe() {
-  const res = await fetch(`${BASE_URL}/auth/me`, { credentials: "include" });
+  const res = await fetch(`${BASE_URL}/api/v1/users/me`, {
+    credentials: "include",
+  });
   if (!res.ok) throw new Error("Non authentifié");
   return res.json();
 }
