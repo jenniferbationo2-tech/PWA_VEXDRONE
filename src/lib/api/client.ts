@@ -4,7 +4,7 @@ import { getStoredCsrfToken } from "./auth";
 import { toAnomaly, toBackendMissionStatus, toMission } from "./mappers";
 import type { BackendAnomaly, BackendDashboardStats, BackendMission } from "./backendTypes";
 
-const USE_MOCKS = !import.meta.env.VITE_API_BASE_URL;
+const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
 
 function delay<T>(data: T, ms = 300): Promise<T> {

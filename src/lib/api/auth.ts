@@ -1,6 +1,5 @@
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
-const USE_MOCK = !import.meta.env.VITE_API_BASE_URL;
-
+const USE_MOCK = import.meta.env.VITE_USE_MOCKS === "true";
 // Le token CSRF vit en mémoire, pas dans un cookie lisible par JS.
 // Le backend le retourne dans le corps de /auth/login, pas dans un cookie.
 let csrfToken: string | null = null;
