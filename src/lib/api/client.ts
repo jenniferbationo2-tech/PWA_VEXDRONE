@@ -1,8 +1,15 @@
 import type { Anomaly, DashboardSummary, Flight, MediaAnalysisJob, Mission, NewMissionInput, Report } from "./types";
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
-import { toAnomaly, toBackendMissionStatus, toFlight, toMission } from "./mappers";
-import type { BackendAnomaly, BackendDashboardStats, BackendImage, BackendMission, BackendVol } from "./backendTypes";
+import { toAnomaly, toBackendMissionStatus, toFlight, toMission, toReport } from "./mappers";
+import type {
+  BackendAnomaly,
+  BackendDashboardStats,
+  BackendImage,
+  BackendMission,
+  BackendReport,
+  BackendVol,
+} from "./backendTypes";
 import { getMockAnalysisJob, startMockAnalysisJob } from "./mediaAnalysisMock";
 import { fetchCurrentWeather } from "./weather";
 
@@ -182,8 +189,11 @@ export const api = {
     await apiFetch<void>(`/api/v1/missions/${id}`, { method: "DELETE" });
   },
 
-  // Pas encore d'endpoint rapports cote backend : reste mocke meme en mode reel.
-  getReports: (): Promise<Report[]> => delay(mockReports),
+  getReports: async (): Promise<Report[]> => {
+    if (USE_MOCKS) return delay(mockReports);
+    const raw = await apiFetch<{ data: BackendReport[] }>("/api/v1/reports/?items_per_page=100");
+    return raw.data.map(toReport);
+  },
 
   getAnomalies: async (): Promise<Anomaly[]> => {
     if (USE_MOCKS) return delay(mockAnomalies);

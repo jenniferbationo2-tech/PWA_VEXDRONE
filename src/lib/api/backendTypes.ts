@@ -50,6 +50,15 @@ export interface BackendVol {
   updated_at: string | null;
 }
 
+export interface BackendReport {
+  mission_uuid: string;
+  titre: string;
+  zone: string;
+  date_mission: string;
+  nombre_anomalies: number;
+  pdf_url: string | null;
+}
+
 export interface BackendImage {
   uuid: string;
   mission_uuid: string;

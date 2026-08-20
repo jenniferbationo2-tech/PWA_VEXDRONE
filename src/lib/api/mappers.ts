@@ -1,5 +1,5 @@
-import type { Mission, Anomaly, Flight, Severity, MissionStatus } from "./types";
-import type { BackendMission, BackendAnomaly, BackendImage, BackendVol } from "./backendTypes";
+import type { Mission, Anomaly, Flight, Report, Severity, MissionStatus } from "./types";
+import type { BackendMission, BackendAnomaly, BackendImage, BackendReport, BackendVol } from "./backendTypes";
 
 // Le backend a 4 niveaux de gravité, l'interface actuelle en attend 3.
 // On garde "critique" séparé plutôt que de le fondre dans "eleve" —
@@ -84,5 +84,21 @@ export function toFlight(raw: BackendVol): Flight {
     imagesCaptured: raw.images_capturees,
     gps: { lat: raw.latitude ?? 0, lng: raw.longitude ?? 0 },
     droneConnection: raw.connexion_drone,
+  };
+}
+
+// Un rapport = une mission terminee, pas une entite stockee a part (voir
+// le module report cote backend). pdf_url n'est pas encore implemente
+// cote backend : "#" reprend la convention deja utilisee par l'UI pour
+// signaler "pas d'apercu PDF disponible".
+export function toReport(raw: BackendReport): Report {
+  return {
+    id: raw.mission_uuid,
+    missionId: raw.mission_uuid,
+    missionName: raw.titre,
+    zone: raw.zone,
+    date: raw.date_mission,
+    anomaliesCount: raw.nombre_anomalies,
+    pdfUrl: raw.pdf_url ?? "#",
   };
 }
