@@ -2,7 +2,7 @@ import type { Anomaly, DashboardSummary, Flight, MediaAnalysisJob, Mission, NewM
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
 import { toAnomaly, toBackendMissionStatus, toFlight, toMission } from "./mappers";
-import type { BackendAnomaly, BackendDashboardStats, BackendMission, BackendVol } from "./backendTypes";
+import type { BackendAnomaly, BackendDashboardStats, BackendImage, BackendMission, BackendVol } from "./backendTypes";
 import { getMockAnalysisJob, startMockAnalysisJob } from "./mediaAnalysisMock";
 import { fetchCurrentWeather } from "./weather";
 
@@ -73,12 +73,25 @@ function missionPayload(input: NewMissionInput) {
   };
 }
 
+// La position GPS et la mission d'une anomalie vivent sur l'image associee,
+// pas sur l'anomalie elle-meme (voir toAnomaly) — /anomalies/ ne renvoie que
+// image_uuid. Un aller simple par image distincte (dedupliquee, en
+// parallele) pour recuperer lat/lng/mission_uuid.
+async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
+  const raw = await apiFetch<{ data: BackendAnomaly[] }>(`/api/v1/anomalies/?items_per_page=${itemsPerPage}`);
+  const imageUuids = [...new Set(raw.data.map((a) => a.image_uuid))];
+  const images = await Promise.all(
+    imageUuids.map((uuid) => apiFetch<BackendImage>(`/api/v1/images/${uuid}`).catch(() => null))
+  );
+  const imageByUuid = new Map(images.filter((i): i is BackendImage => i !== null).map((i) => [i.uuid, i]));
+  return raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid)));
+}
+
 // Les stats d'anomalies n'ont pas d'endpoint dedie : recalculees cote client
 // a partir de /anomalies/. Le module drone expose lui /dashboard/stats pour
 // le reste (flotte, vols du jour, delta alertes critiques).
 async function computeAnomalyStats() {
-  const raw = await apiFetch<{ data: BackendAnomaly[] }>("/api/v1/anomalies/?items_per_page=100");
-  const anomalies = raw.data.map((a) => toAnomaly(a));
+  const anomalies = await fetchAnomaliesWithImages(100);
 
   const severityBreakdown: DashboardSummary["severityBreakdown"] = (["eleve", "moyen", "faible"] as const).map(
     (severity) => ({ severity, count: anomalies.filter((a) => a.severity === severity).length })
@@ -174,8 +187,7 @@ export const api = {
 
   getAnomalies: async (): Promise<Anomaly[]> => {
     if (USE_MOCKS) return delay(mockAnomalies);
-    const raw = await apiFetch<{ data: BackendAnomaly[] }>("/api/v1/anomalies/");
-    return raw.data.map((a) => toAnomaly(a));
+    return fetchAnomaliesWithImages();
   },
 
   markAnomalyTreated: async (id: string): Promise<Anomaly> => {
@@ -190,7 +202,8 @@ export const api = {
       body: JSON.stringify({ validee_par_humain: true }),
     });
     const raw = await apiFetch<BackendAnomaly>(`/api/v1/anomalies/${id}`);
-    return toAnomaly(raw);
+    const image = await apiFetch<BackendImage>(`/api/v1/images/${raw.image_uuid}`).catch(() => undefined);
+    return toAnomaly(raw, image);
   },
 
   // Pas encore d'endpoint upload/analyse media cote backend : reste mocke meme en mode reel.

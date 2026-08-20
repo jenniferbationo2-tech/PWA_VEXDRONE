@@ -4,7 +4,6 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline } from "react-leaflet"
 import L from "leaflet";
 import { AlertTriangle, Zap, Leaf } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { mockMissions } from "@/lib/api/mockData";
 import type { Anomaly, Severity } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
@@ -39,10 +38,6 @@ const DEMO_FLIGHT_PATH: [number, number][] = [
   [12.3565, -1.563],
 ];
 
-function missionName(missionId: string) {
-  return mockMissions.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
-}
-
 const TYPE_ICON: Record<string, typeof AlertTriangle> = {
   "Isolateur cassé": AlertTriangle,
   "Câble endommagé": Zap,
@@ -55,6 +50,19 @@ export function Carte() {
     queryKey: ["anomalies"],
     queryFn: api.getAnomalies,
   });
+
+  // Reutilise le cache de la page Missions si deja charge. Le backend ne met
+  // pas encore la zone directement sur l'anomalie (TODO dans mappers.ts) :
+  // on la derive ici via la mission, comme le nom.
+  const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
+
+  function missionName(missionId: string) {
+    return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
+  }
+
+  function missionZone(missionId: string, fallback: string) {
+    return fallback || missions?.find((m) => m.id === missionId)?.zone || "—";
+  }
 
   const center = useMemo<[number, number]>(() => {
     if (!anomalies || anomalies.length === 0) return [12.3714, -1.5197];
@@ -115,7 +123,7 @@ export function Carte() {
                           <span className="font-semibold text-brand-blue-dark">{a.type}</span>
                         </div>
                       </td>
-                      <td className="px-5 py-3.5 text-brand-gray">{a.zone}</td>
+                      <td className="px-5 py-3.5 text-brand-gray">{missionZone(a.missionId, a.zone)}</td>
                       <td className="px-5 py-3.5">
                         <Badge variant={severityVariant[a.severity]}>{severityLabel[a.severity]}</Badge>
                       </td>

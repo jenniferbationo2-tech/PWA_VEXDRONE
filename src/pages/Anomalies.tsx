@@ -2,7 +2,6 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Wifi, MapPin, CheckCircle2 } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { mockMissions } from "@/lib/api/mockData";
 import type { AnomalyStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -18,16 +17,25 @@ const FILTERS: { value: AnomalyStatus | "toutes"; label: string }[] = [
 const severityVariant = { eleve: "high", moyen: "medium", faible: "low" } as const;
 const severityLabel = { eleve: "Élevé", moyen: "Moyen", faible: "Faible" } as const;
 
-function missionName(missionId: string) {
-  return mockMissions.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
-}
-
 export function Anomalies() {
   const queryClient = useQueryClient();
   const { data: anomalies, isLoading, isError } = useQuery({
     queryKey: ["anomalies"],
     queryFn: api.getAnomalies,
   });
+
+  // Reutilise le cache de la page Missions si deja charge. Le backend ne met
+  // pas encore la zone directement sur l'anomalie : on la derive via la
+  // mission, comme le nom (voir le TODO dans mappers.ts).
+  const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
+
+  function missionName(missionId: string) {
+    return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
+  }
+
+  function missionZone(missionId: string, fallback: string) {
+    return fallback || missions?.find((m) => m.id === missionId)?.zone || "—";
+  }
 
   const [filter, setFilter] = useState<AnomalyStatus | "toutes">("toutes");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -119,7 +127,7 @@ export function Anomalies() {
                         >
                           <td className="px-5 py-3.5 font-semibold text-brand-blue-dark">{a.id}</td>
                           <td className="px-5 py-3.5 text-brand-blue-dark/80">{a.type}</td>
-                          <td className="px-5 py-3.5 text-brand-gray">{a.zone}</td>
+                          <td className="px-5 py-3.5 text-brand-gray">{missionZone(a.missionId, a.zone)}</td>
                           <td className="px-5 py-3.5 font-semibold text-brand-blue-dark">{a.confidence}%</td>
                           <td className="px-5 py-3.5">
                             <Badge variant={a.status === "traitee" ? "success" : "pending"}>
@@ -156,7 +164,7 @@ export function Anomalies() {
                       </Badge>
                     </div>
                     <div className="flex items-center justify-between text-[13px]">
-                      <span className="text-brand-gray">{a.zone}</span>
+                      <span className="text-brand-gray">{missionZone(a.missionId, a.zone)}</span>
                       <span className="font-semibold text-brand-blue-dark">{a.confidence}% confiance</span>
                     </div>
                   </button>
