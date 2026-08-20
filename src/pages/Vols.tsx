@@ -3,7 +3,6 @@ import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
 import { Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { mockMissions } from "@/lib/api/mockData";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 
@@ -24,16 +23,20 @@ const droneMarkerIcon = L.divIcon({
   iconAnchor: [8, 8],
 });
 
-function missionName(missionId: string) {
-  return mockMissions.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
-}
-
 export function Vols() {
   const { data: flight, isLoading, isError } = useQuery({
     queryKey: ["active-flight"],
     queryFn: api.getActiveFlight,
     refetchInterval: 4000,
   });
+
+  // Reutilise le cache de la page Missions si deja charge — pas de requete
+  // supplementaire dans ce cas, juste le nom a afficher.
+  const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
+
+  function missionName(missionId: string) {
+    return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
+  }
 
   if (isLoading) {
     return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;

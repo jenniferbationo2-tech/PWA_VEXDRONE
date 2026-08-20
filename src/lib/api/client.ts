@@ -1,8 +1,8 @@
 import type { Anomaly, DashboardSummary, Flight, MediaAnalysisJob, Mission, NewMissionInput, Report } from "./types";
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
-import { toAnomaly, toBackendMissionStatus, toMission } from "./mappers";
-import type { BackendAnomaly, BackendDashboardStats, BackendMission } from "./backendTypes";
+import { toAnomaly, toBackendMissionStatus, toFlight, toMission } from "./mappers";
+import type { BackendAnomaly, BackendDashboardStats, BackendMission, BackendVol } from "./backendTypes";
 import { getMockAnalysisJob, startMockAnalysisJob } from "./mediaAnalysisMock";
 import { fetchCurrentWeather } from "./weather";
 
@@ -14,6 +14,21 @@ function delay<T>(data: T, ms = 300): Promise<T> {
 }
 
 const CSRF_PROTECTED_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+// FastAPI renvoie soit {"detail": "message"} (erreurs metier : 401/403/409...),
+// soit {"detail": [{"loc": [...], "msg": "..."}]} pour les erreurs de
+// validation Pydantic (422) — les deux formes sont a gerer, sinon un echec
+// de validation affiche juste "[object Object]".
+function extractErrorDetail(body: unknown): string {
+  const detail = (body as { detail?: unknown } | null)?.detail;
+  if (typeof detail === "string") return detail;
+  if (Array.isArray(detail)) {
+    return detail
+      .map((e) => (e && typeof e === "object" && "msg" in e ? String((e as { msg: unknown }).msg) : String(e)))
+      .join(" · ");
+  }
+  return "Erreur inattendue";
+}
 
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
@@ -39,7 +54,7 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     // mission ne vous appartient pas") est un 403 tout aussi valide mais n'a
     // rien a voir avec la session — ne pas le confondre avec l'autre.
     if (isCsrfProtected && res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
-    throw new Error(`API error ${res.status} on ${path}`);
+    throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
 
@@ -190,14 +205,22 @@ export const api = {
   // Meteo temps reel via Open-Meteo (voir weather.ts) : externe au backend VEXDRONE.
   getWeather: fetchCurrentWeather,
 
-  // Pas encore d'endpoint vol actif cote backend : reste mocke meme en mode reel.
-  getActiveFlight: (): Promise<Flight> => {
-    mockFlight.imagesCaptured += Math.floor(Math.random() * 2);
-    mockFlight.battery = Math.max(5, mockFlight.battery - (Math.random() < 0.3 ? 1 : 0));
-    mockFlight.gps = {
-      lat: mockFlight.gps.lat + (Math.random() - 0.5) * 0.0006,
-      lng: mockFlight.gps.lng + (Math.random() - 0.5) * 0.0006,
-    };
-    return delay(mockFlight, 150);
+  getActiveFlight: async (): Promise<Flight> => {
+    if (USE_MOCKS) {
+      mockFlight.imagesCaptured += Math.floor(Math.random() * 2);
+      mockFlight.battery = Math.max(5, mockFlight.battery - (Math.random() < 0.3 ? 1 : 0));
+      mockFlight.gps = {
+        lat: mockFlight.gps.lat + (Math.random() - 0.5) * 0.0006,
+        lng: mockFlight.gps.lng + (Math.random() - 0.5) * 0.0006,
+      };
+      return delay(mockFlight, 150);
+    }
+    // Pas de vol "global" cote backend : un vol est rattache a une mission.
+    // On prend la mission en_cours et on regarde si elle a un vol actif.
+    const missions = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
+    const activeMission = missions.data.find((m) => m.statut === "en_cours");
+    if (!activeMission) throw new Error("Aucune mission en cours");
+    const raw = await apiFetch<BackendVol>(`/api/v1/vols/actif?mission_uuid=${activeMission.uuid}`);
+    return toFlight(raw);
   },
 };

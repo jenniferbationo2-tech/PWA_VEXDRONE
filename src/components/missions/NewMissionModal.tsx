@@ -75,8 +75,9 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
     try {
       await onSave({ name, zone, description, dateDebut, dateFin, status });
       resetAndClose();
-    } catch {
-      setError(isEditMode ? "Impossible de modifier la mission. Réessaie." : "Impossible de créer la mission. Réessaie.");
+    } catch (err) {
+      const fallback = isEditMode ? "Impossible de modifier la mission." : "Impossible de créer la mission.";
+      setError(err instanceof Error ? err.message : fallback);
     } finally {
       setSubmitting(false);
     }

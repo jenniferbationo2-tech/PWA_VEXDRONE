@@ -36,6 +36,20 @@ export interface BackendDashboardStats {
   critical_alerts_delta: number;
 }
 
+export interface BackendVol {
+  uuid: string;
+  mission_uuid: string;
+  statut: "en_attente" | "en_cours" | "terminee";
+  altitude: number;
+  batterie: number;
+  images_capturees: number;
+  latitude: number | null;
+  longitude: number | null;
+  connexion_drone: "wifi" | "4g" | "hors_ligne";
+  created_at: string;
+  updated_at: string | null;
+}
+
 export interface BackendImage {
   uuid: string;
   mission_uuid: string;

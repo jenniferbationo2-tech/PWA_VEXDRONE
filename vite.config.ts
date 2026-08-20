@@ -11,9 +11,12 @@ export default defineConfig({
     },
   },
   server: {
+    // HTTPS local est active par le plugin basicSsl() ci-dessus, pas ici :
+    // server.https attend un objet de certificats (HttpsServerOptions), pas
+    // un booleen - `https: true` etait une erreur de type, en plus d'etre
+    // redondant avec ce que le plugin fait deja.
     port: 5173,
     strictPort: true,
-    https: true,
     proxy: {
       "/api": {
         target: "https://vexdrone-osc.onrender.com",

@@ -1,5 +1,5 @@
-import type { Mission, Anomaly, Severity, MissionStatus } from "./types";
-import type { BackendMission, BackendAnomaly, BackendImage } from "./backendTypes";
+import type { Mission, Anomaly, Flight, Severity, MissionStatus } from "./types";
+import type { BackendMission, BackendAnomaly, BackendImage, BackendVol } from "./backendTypes";
 
 // Le backend a 4 niveaux de gravité, l'interface actuelle en attend 3.
 // On garde "critique" séparé plutôt que de le fondre dans "eleve" —
@@ -69,5 +69,20 @@ export function toAnomaly(raw: BackendAnomaly, image?: BackendImage): Anomaly {
     },
     missionId: image?.mission_uuid ?? "",
     imageUrl: image ? `/api/v1/images/${image.uuid}/fichier` : undefined,
+  };
+}
+
+// Les valeurs de statut/connexion sont deja les memes chaines cote backend
+// et frontend (en_attente/en_cours/terminee, wifi/4g/hors_ligne).
+export function toFlight(raw: BackendVol): Flight {
+  return {
+    id: raw.uuid,
+    missionId: raw.mission_uuid,
+    status: raw.statut,
+    altitude: raw.altitude,
+    battery: raw.batterie,
+    imagesCaptured: raw.images_capturees,
+    gps: { lat: raw.latitude ?? 0, lng: raw.longitude ?? 0 },
+    droneConnection: raw.connexion_drone,
   };
 }
