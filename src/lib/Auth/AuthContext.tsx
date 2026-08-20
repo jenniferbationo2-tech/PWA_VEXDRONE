@@ -10,6 +10,9 @@ export interface User {
   name?: string;
   organisation?: string;
   zone?: string;
+  email?: string;
+  role?: string;
+  avatarUrl?: string;
 }
 
 interface AuthContextType {
