@@ -1,8 +1,10 @@
-import type { Anomaly, DashboardSummary, Flight, Mission, NewMissionInput, Report } from "./types";
+import type { Anomaly, DashboardSummary, Flight, MediaAnalysisJob, Mission, NewMissionInput, Report } from "./types";
 import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
-import { getStoredCsrfToken } from "./auth";
+import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
 import { toAnomaly, toBackendMissionStatus, toMission } from "./mappers";
 import type { BackendAnomaly, BackendDashboardStats, BackendMission } from "./backendTypes";
+import { getMockAnalysisJob, startMockAnalysisJob } from "./mediaAnalysisMock";
+import { fetchCurrentWeather } from "./weather";
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? "";
@@ -11,12 +13,15 @@ function delay<T>(data: T, ms = 300): Promise<T> {
   return new Promise((resolve) => setTimeout(() => resolve(data), ms));
 }
 
+const CSRF_PROTECTED_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
+  const isCsrfProtected = CSRF_PROTECTED_METHODS.includes(method);
   const headers = new Headers(options.headers);
   headers.set("Content-Type", "application/json");
 
-  if (["POST", "PUT", "PATCH", "DELETE"].includes(method)) {
+  if (isCsrfProtected) {
     const token = getStoredCsrfToken();
     if (token) headers.set("X-CSRF-Token", token);
   }
@@ -27,9 +32,18 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     credentials: "include",
   });
 
-  if (!res.ok) throw new Error(`API error ${res.status} on ${path}`);
+  if (!res.ok) {
+    // Un 403 sur une requete protegee par CSRF signifie quasi toujours que le
+    // token (garde en memoire, perdu au reload) manque ou est perime : on
+    // force une reconnexion plutot que de laisser echouer silencieusement.
+    if (res.status === 403 && isCsrfProtected) notifyAuthExpired();
+    throw new Error(`API error ${res.status} on ${path}`);
+  }
   if (res.status === 204) return undefined as T;
-  return res.json();
+
+  const data = await res.json();
+  captureCsrfToken(data);
+  return data;
 }
 
 function missionPayload(input: NewMissionInput) {
@@ -161,6 +175,18 @@ export const api = {
     const raw = await apiFetch<BackendAnomaly>(`/api/v1/anomalies/${id}`);
     return toAnomaly(raw);
   },
+
+  // Pas encore d'endpoint upload/analyse media cote backend : reste mocke meme en mode reel.
+  analyzeMedia: async (files: File[]): Promise<MediaAnalysisJob> => {
+    return delay(startMockAnalysisJob(files.length), 200);
+  },
+
+  getMediaAnalysisJob: async (jobId: string): Promise<MediaAnalysisJob> => {
+    return delay(getMockAnalysisJob(jobId), 150);
+  },
+
+  // Meteo temps reel via Open-Meteo (voir weather.ts) : externe au backend VEXDRONE.
+  getWeather: fetchCurrentWeather,
 
   // Pas encore d'endpoint vol actif cote backend : reste mocke meme en mode reel.
   getActiveFlight: (): Promise<Flight> => {

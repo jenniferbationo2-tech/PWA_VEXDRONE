@@ -1,11 +1,13 @@
 import { useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2 } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { Search, Plus, Pencil, Trash2, Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { Mission, MissionStatus, NewMissionInput } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { IconButton } from "@/components/ui/IconButton";
+import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { cn } from "@/lib/utils";
 import { NewMissionModal } from "@/components/missions/NewMissionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
@@ -31,6 +33,7 @@ function formatDateRange(dateDebut: string, dateFin: string) {
 
 export function Missions() {
   const queryClient = useQueryClient();
+  const { addNotification } = useNotifications();
   const { data: missions, isLoading, isError } = useQuery({
     queryKey: ["missions"],
     queryFn: api.getMissions,
@@ -44,6 +47,26 @@ export function Missions() {
 
   const [deleteTarget, setDeleteTarget] = useState<Mission | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  const launchMutation = useMutation({
+    mutationFn: (mission: Mission) =>
+      api.updateMission(mission.id, {
+        name: mission.name,
+        zone: mission.zone,
+        description: mission.description,
+        dateDebut: mission.dateDebut,
+        dateFin: mission.dateFin,
+        status: "en_cours",
+      }),
+    onSuccess: (updated) => {
+      queryClient.invalidateQueries({ queryKey: ["missions"] });
+      addNotification({
+        title: "Mission lancée",
+        message: `"${updated.name}" est en cours — suivez le vol en direct.`,
+        link: "/vols",
+      });
+    },
+  });
 
   const filtered = useMemo(() => {
     if (!missions) return [];
@@ -144,50 +167,81 @@ export function Missions() {
       ) : (
         <>
           {/* Vue tableau — desktop */}
-          <div className="hidden overflow-x-auto md:block">
-            <table className="w-full min-w-[760px] text-left text-[14px]">
+          <div className="hidden overflow-hidden rounded-lg border border-brand-blue/[0.06] bg-white shadow-card md:block">
+            <table className="w-full table-fixed text-left text-[14px]">
+              <colgroup>
+                <col className="w-[11%]" />
+                <col className="w-[19%]" />
+                <col className="w-[17%]" />
+                <col className="w-[26%]" />
+                <col className="w-[12%]" />
+                <col className="w-[15%]" />
+              </colgroup>
               <thead>
                 <tr className="border-b border-brand-blue/[0.06] text-[12px] uppercase tracking-wide text-brand-gray">
-                  <th className="px-6 py-3 font-medium">Zone</th>
-                  <th className="px-6 py-3 font-medium">Mission</th>
-                  <th className="px-6 py-3 font-medium">Période</th>
-                  <th className="px-6 py-3 font-medium">Description</th>
-                  <th className="px-6 py-3 font-medium">Statut</th>
-                  <th className="px-6 py-3 font-medium">Action</th>
+                  <th className="px-3 py-3 font-medium">Zone</th>
+                  <th className="px-3 py-3 font-medium">Mission</th>
+                  <th className="px-3 py-3 font-medium">Période</th>
+                  <th className="px-3 py-3 font-medium">Description</th>
+                  <th className="px-3 py-3 font-medium">Statut</th>
+                  <th className="px-3 py-3 text-right font-medium">Action</th>
                 </tr>
               </thead>
               <tbody>
-                {filtered.map((m: Mission) => (
-                  <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60">
-                    <td className="px-6 py-3.5">
-                      <Badge variant="neutral">{m.zone}</Badge>
-                    </td>
-                    <td className="px-6 py-3.5 font-semibold text-brand-blue-dark">{m.name}</td>
-                    <td className="px-6 py-3.5 whitespace-nowrap text-brand-gray">
-                      {formatDateRange(m.dateDebut, m.dateFin)}
-                    </td>
-                    <td className="px-6 py-3.5 max-w-xs truncate text-brand-blue-dark/80">{m.description}</td>
-                    <td className="px-6 py-3.5">
-                      <Badge variant={STATUS_BADGE[m.status].variant}>{STATUS_BADGE[m.status].label}</Badge>
-                    </td>
-                    <td className="px-6 py-3.5">
-                      <div className="flex items-center gap-3">
-                        <button
-                          onClick={() => openEditModal(m)}
-                          className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline"
-                        >
-                          <Pencil size={13} /> Modifier
-                        </button>
-                        <button
-                          onClick={() => setDeleteTarget(m)}
-                          className="flex items-center gap-1 text-[13px] font-semibold text-brand-orange hover:underline"
-                        >
-                          <Trash2 size={13} /> Supprimer
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
+                {filtered.map((m: Mission) => {
+                  const isLaunching = launchMutation.isPending && launchMutation.variables?.id === m.id;
+                  return (
+                    <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60">
+                      <td className="px-3 py-3 truncate" title={m.zone}>
+                        <Badge variant="neutral">{m.zone}</Badge>
+                      </td>
+                      <td className="truncate px-3 py-3 font-semibold text-brand-blue-dark" title={m.name}>
+                        {m.name}
+                      </td>
+                      <td
+                        className="truncate px-3 py-3 text-brand-gray"
+                        title={formatDateRange(m.dateDebut, m.dateFin)}
+                      >
+                        {formatDateRange(m.dateDebut, m.dateFin)}
+                      </td>
+                      <td className="truncate px-3 py-3 text-brand-blue-dark/80" title={m.description}>
+                        {m.description}
+                      </td>
+                      <td className="px-3 py-3">
+                        <Badge variant={STATUS_BADGE[m.status].variant}>{STATUS_BADGE[m.status].label}</Badge>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex items-center justify-end gap-0.5">
+                          {m.status === "en_attente" &&
+                            (isLaunching ? (
+                              <span className="flex h-9 w-9 items-center justify-center text-brand-gray">
+                                <Loader2 size={16} className="animate-spin" />
+                              </span>
+                            ) : (
+                              <IconButton
+                                icon={Play}
+                                label="Lancer"
+                                onClick={() => launchMutation.mutate(m)}
+                                className="hover:bg-status-success/10 hover:text-status-success"
+                              />
+                            ))}
+                          <IconButton
+                            icon={Pencil}
+                            label="Modifier"
+                            onClick={() => openEditModal(m)}
+                            className="hover:bg-brand-blue/5 hover:text-brand-blue"
+                          />
+                          <IconButton
+                            icon={Trash2}
+                            label="Supprimer"
+                            onClick={() => setDeleteTarget(m)}
+                            className="hover:bg-brand-orange/10 hover:text-brand-orange"
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
@@ -214,6 +268,19 @@ export function Missions() {
                 </div>
 
                 <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3">
+                  {m.status === "en_attente" &&
+                    (launchMutation.isPending && launchMutation.variables?.id === m.id ? (
+                      <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray">
+                        <Loader2 size={13} className="animate-spin" /> Lancement…
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => launchMutation.mutate(m)}
+                        className="flex items-center gap-1 text-[13px] font-semibold text-status-success hover:underline"
+                      >
+                        <Play size={13} /> Lancer
+                      </button>
+                    ))}
                   <button
                     onClick={() => openEditModal(m)}
                     className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline"

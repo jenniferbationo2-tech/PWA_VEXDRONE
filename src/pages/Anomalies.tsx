@@ -6,6 +6,7 @@ import { mockMissions } from "@/lib/api/mockData";
 import type { AnomalyStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { MediaAnalysisCard } from "@/components/anomalies/MediaAnalysisCard";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 const FILTERS: { value: AnomalyStatus | "toutes"; label: string }[] = [
@@ -54,25 +55,29 @@ export function Anomalies() {
         </span>
       </div>
 
+      <div className="mb-6">
+        <MediaAnalysisCard />
+      </div>
+
+      <div className="mb-4 flex gap-2">
+        {FILTERS.map((f) => (
+          <button
+            key={f.value}
+            onClick={() => setFilter(f.value)}
+            className={cn(
+              "rounded-sm px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
+              filter === f.value
+                ? "bg-brand-blue text-white"
+                : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white"
+            )}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="lg:col-span-3">
-          <div className="mb-4 flex gap-2">
-            {FILTERS.map((f) => (
-              <button
-                key={f.value}
-                onClick={() => setFilter(f.value)}
-                className={cn(
-                  "rounded-sm px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-                  filter === f.value
-                    ? "bg-brand-blue text-white"
-                    : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white"
-                )}
-              >
-                {f.label}
-              </button>
-            ))}
-          </div>
-
           {isLoading ? (
             <div className="flex h-40 items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-brand-gray shadow-card">
               Chargement…

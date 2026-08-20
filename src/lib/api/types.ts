@@ -60,6 +60,16 @@ export interface Report {
   pdfUrl: string;
 }
 
+export type MediaAnalysisStatus = "attente" | "en_cours" | "terminee" | "echouee";
+
+export interface MediaAnalysisJob {
+  id: string;
+  status: MediaAnalysisStatus;
+  progress: number; // 0-100
+  fileCount: number;
+  errorMessage?: string;
+}
+
 export interface DashboardSummary {
   flightsToday: number;
   flightsTodayDelta: number;

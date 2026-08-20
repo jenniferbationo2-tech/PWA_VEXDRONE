@@ -15,15 +15,15 @@ export function StatCard({ label, value, delta, helper, icon: Icon }: StatCardPr
   const isGood = delta ? (delta.positiveIsGood ?? true) === isPositive : null;
 
   return (
-    <Card>
+    <Card className="p-4">
       <div className="flex items-start justify-between">
-        <span className="text-[13px] font-medium text-brand-gray">{label}</span>
-        {Icon && <Icon size={16} className="text-brand-blue/30" strokeWidth={1.75} />}
+        <span className="text-[12px] font-medium text-brand-gray">{label}</span>
+        {Icon && <Icon size={14} className="text-brand-blue/30" strokeWidth={1.75} />}
       </div>
-      <div className="mt-2 font-display text-[32px] font-bold leading-none text-brand-blue-dark">
+      <div className="mt-1.5 font-display text-[26px] font-bold leading-none text-brand-blue-dark">
         {value}
       </div>
-      <div className="mt-2.5 flex items-center gap-1.5 text-[13px]">
+      <div className="mt-2 flex items-center gap-1.5 text-[12px]">
         {delta && (
           <span
             className={cn(
@@ -31,7 +31,7 @@ export function StatCard({ label, value, delta, helper, icon: Icon }: StatCardPr
               isGood ? "text-status-success" : "text-brand-orange"
             )}
           >
-            {isPositive ? <ArrowUp size={12} /> : <ArrowDown size={12} />}
+            {isPositive ? <ArrowUp size={11} /> : <ArrowDown size={11} />}
             {Math.abs(delta.value)}
           </span>
         )}

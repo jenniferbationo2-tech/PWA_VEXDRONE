@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/Auth/AuthContext";
@@ -11,6 +11,13 @@ export function Login() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (sessionStorage.getItem("vexdrone_session_expired")) {
+      sessionStorage.removeItem("vexdrone_session_expired");
+      setError("Ta session a expiré. Merci de te reconnecter.");
+    }
+  }, []);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
