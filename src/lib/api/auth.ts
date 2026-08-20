@@ -99,6 +99,22 @@ async function realGetMe() {
   return data;
 }
 
+// Recupere un jeton CSRF perdu (ex: apres un rechargement de page) a partir
+// du cookie de session, qui lui survit au reload. Cet endpoint ne demande
+// pas de CSRF lui-meme — c'est le seul moyen de se rattraper sans repasser
+// par un vrai login, qui echouerait par-dessus une session encore active.
+// A appeler au demarrage, avant qu'une requete protegee ne declenche un 403.
+export async function refreshCsrfToken(): Promise<void> {
+  if (USE_MOCK) return;
+  const res = await fetch(`${BASE_URL}/api/v1/auth/refresh-csrf`, {
+    method: "POST",
+    credentials: "include",
+  });
+  if (!res.ok) return;
+  const data = await res.json();
+  captureCsrfToken(data);
+}
+
 // ---- Export unique, le reste de l'app ne sait pas laquelle est active ----
 export const login = USE_MOCK ? mockLogin : realLogin;
 export const logout = USE_MOCK ? mockLogout : realLogout;

@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getMe, login as apiLogin, logout as apiLogout, onAuthExpired } from "@/lib/api/auth";
+import { getMe, login as apiLogin, logout as apiLogout, onAuthExpired, refreshCsrfToken } from "@/lib/api/auth";
 
 // Le backend ne renvoie que "username" de façon garantie sur /users/me.
 // name/organisation/zone sont optionnels : s'il les fournit déjà, l'UI les
@@ -30,6 +30,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     getMe()
+      // Le cookie de session survit a un reload, pas le jeton CSRF (garde en
+      // memoire JS) : on le regenere ici, avant qu'une premiere action ne
+      // declenche un faux 403 "session expiree".
+      .then(async (me) => {
+        await refreshCsrfToken();
+        return me;
+      })
       .then(setUser)
       .catch(() => setUser(null))
       .finally(() => setIsLoading(false));

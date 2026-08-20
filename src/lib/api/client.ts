@@ -33,10 +33,12 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   });
 
   if (!res.ok) {
-    // Un 403 sur une requete protegee par CSRF signifie quasi toujours que le
-    // token (garde en memoire, perdu au reload) manque ou est perime : on
-    // force une reconnexion plutot que de laisser echouer silencieusement.
-    if (res.status === 403 && isCsrfProtected) notifyAuthExpired();
+    // Un 403 protegeant du CSRF porte le header X-CSRF-Error : c'est le seul
+    // cas ou le jeton (garde en memoire, perdu au reload) manque vraiment, et
+    // ou forcer une reconnexion a du sens. Un 403 de permission ("cette
+    // mission ne vous appartient pas") est un 403 tout aussi valide mais n'a
+    // rien a voir avec la session — ne pas le confondre avec l'autre.
+    if (isCsrfProtected && res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
     throw new Error(`API error ${res.status} on ${path}`);
   }
   if (res.status === 204) return undefined as T;
