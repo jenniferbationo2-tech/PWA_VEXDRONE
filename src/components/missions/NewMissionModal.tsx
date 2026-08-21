@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { computeMissionStatus, isPastDate } from "@/lib/missionStatus";
+import { isPastDate } from "@/lib/missionStatus";
 import type { Mission, NewMissionInput } from "@/lib/api/types";
 
 interface Props {
@@ -69,7 +69,9 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
       return;
     }
 
-    const status = computeMissionStatus(dateDebut, dateFin);
+    // Une mission naît toujours "en_attente" : elle ne passe "en_cours" que via
+    // le bouton "Lancer", et l'édition ne doit pas court-circuiter ce cycle.
+    const status = isEditMode && mission ? mission.status : "en_attente";
 
     setSubmitting(true);
     try {

@@ -70,6 +70,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data;
 }
 
+// BLOQUANT BACKEND : le modèle Mission côté API n'a qu'un seul champ de date
+// (date_mission — voir BackendMission dans backendTypes.ts). input.dateFin
+// n'est donc jamais envoyé et sera reconstruit égal à dateDebut à la
+// prochaine lecture (voir toMission dans mappers.ts). Tant qu'un champ de fin
+// distinct n'est pas ajouté côté backend, la date de fin choisie dans le
+// formulaire ne survit pas à un aller-retour serveur (voir la garde dans
+// getEffectiveStatus, lib/missionStatus.ts, qui compense côté affichage).
 function missionPayload(input: NewMissionInput) {
   return {
     titre: input.name,
@@ -145,7 +152,10 @@ export const api = {
   },
 
   getMissions: async (): Promise<Mission[]> => {
-    if (USE_MOCKS) return delay(mockMissions);
+    // Copie superficielle : mockMissions est mutée en place par create/update/delete,
+    // renvoyer la même référence empêcherait React Query (structural sharing) de
+    // détecter un changement après invalidateQueries et de re-render.
+    if (USE_MOCKS) return delay([...mockMissions]);
     const raw = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
     return raw.data.map(toMission);
   },

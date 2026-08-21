@@ -2,8 +2,8 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Pencil, Trash2, Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
+import { getEffectiveStatus } from "@/lib/missionStatus";
 import type { Mission, MissionStatus, NewMissionInput } from "@/lib/api/types";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/IconButton";
@@ -71,7 +71,7 @@ export function Missions() {
   const filtered = useMemo(() => {
     if (!missions) return [];
     return missions.filter((m: Mission) => {
-      const matchesFilter = filter === "toutes" || m.status === filter;
+      const matchesFilter = filter === "toutes" || getEffectiveStatus(m) === filter;
       const q = search.trim().toLowerCase();
       const matchesSearch =
         q === "" ||
@@ -117,13 +117,7 @@ export function Missions() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
-        <h1>Missions</h1>
-        <Button variant="primary" size="sm" onClick={openCreateModal}>
-          <Plus size={14} />
-          Nouvelle mission
-        </Button>
-      </div>
+      <h1 className="mb-6">Missions</h1>
 
       <div className="relative mb-4">
         <Search size={16} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-gray" />
@@ -135,21 +129,35 @@ export function Missions() {
         />
       </div>
 
-      <div className="mb-5 flex gap-2">
-        {FILTERS.map((f) => (
-          <button
-            key={f.value}
-            onClick={() => setFilter(f.value)}
-            className={cn(
-              "rounded-sm px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
-              filter === f.value
-                ? "bg-brand-blue text-white"
-                : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white"
-            )}
-          >
-            {f.label}
-          </button>
-        ))}
+      <div className="mb-5 flex items-center justify-between gap-3">
+        <div className="flex flex-wrap gap-2">
+          {FILTERS.map((f) => (
+            <button
+              key={f.value}
+              onClick={() => setFilter(f.value)}
+              className={cn(
+                "rounded-sm px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
+                filter === f.value
+                  ? "bg-brand-blue text-white"
+                  : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white"
+              )}
+            >
+              {f.label}
+            </button>
+          ))}
+        </div>
+
+        <button
+          type="button"
+          onClick={openCreateModal}
+          aria-label="Nouvelle mission"
+          className="group flex h-9 flex-shrink-0 items-center rounded-sm bg-brand-blue px-2.5 text-white transition-colors hover:bg-brand-blue-light"
+        >
+          <Plus size={16} className="flex-shrink-0" />
+          <span className="max-w-0 overflow-hidden whitespace-nowrap text-[13px] font-semibold transition-[max-width] duration-200 group-hover:max-w-[140px] group-focus-visible:max-w-[140px]">
+            <span className="pl-2">Nouvelle mission</span>
+          </span>
+        </button>
       </div>
 
       {isLoading ? (
@@ -190,6 +198,7 @@ export function Missions() {
               <tbody>
                 {filtered.map((m: Mission) => {
                   const isLaunching = launchMutation.isPending && launchMutation.variables?.id === m.id;
+                  const effectiveStatus = getEffectiveStatus(m);
                   return (
                     <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60">
                       <td className="px-3 py-3 truncate" title={m.zone}>
@@ -208,11 +217,11 @@ export function Missions() {
                         {m.description}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge variant={STATUS_BADGE[m.status].variant}>{STATUS_BADGE[m.status].label}</Badge>
+                        <Badge variant={STATUS_BADGE[effectiveStatus].variant}>{STATUS_BADGE[effectiveStatus].label}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-0.5">
-                          {m.status === "en_attente" &&
+                          {effectiveStatus === "en_attente" &&
                             (isLaunching ? (
                               <span className="flex h-9 w-9 items-center justify-center text-brand-gray">
                                 <Loader2 size={16} className="animate-spin" />
@@ -248,54 +257,57 @@ export function Missions() {
 
           {/* Vue cartes — mobile */}
           <div className="space-y-3 md:hidden">
-            {filtered.map((m: Mission) => (
-              <div key={m.id} className="rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
-                <div className="mb-2 flex items-start justify-between gap-2">
-                  <div>
-                    <Badge variant="neutral">{m.zone}</Badge>
-                    <p className="mt-1.5 font-semibold text-brand-blue-dark">{m.name}</p>
+            {filtered.map((m: Mission) => {
+              const effectiveStatus = getEffectiveStatus(m);
+              return (
+                <div key={m.id} className="rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
+                  <div className="mb-2 flex items-start justify-between gap-2">
+                    <div>
+                      <Badge variant="neutral">{m.zone}</Badge>
+                      <p className="mt-1.5 font-semibold text-brand-blue-dark">{m.name}</p>
+                    </div>
+                    <Badge variant={STATUS_BADGE[effectiveStatus].variant}>{STATUS_BADGE[effectiveStatus].label}</Badge>
                   </div>
-                  <Badge variant={STATUS_BADGE[m.status].variant}>{STATUS_BADGE[m.status].label}</Badge>
-                </div>
 
-                <p className="mb-3 text-[13px] text-brand-blue-dark/80">{m.description}</p>
+                  <p className="mb-3 text-[13px] text-brand-blue-dark/80">{m.description}</p>
 
-                <div className="mb-3 flex items-center justify-between text-[13px]">
-                  <span className="text-brand-gray">Période</span>
-                  <span className="font-medium text-brand-blue-dark">
-                    {formatDateRange(m.dateDebut, m.dateFin)}
-                  </span>
-                </div>
+                  <div className="mb-3 flex items-center justify-between text-[13px]">
+                    <span className="text-brand-gray">Période</span>
+                    <span className="font-medium text-brand-blue-dark">
+                      {formatDateRange(m.dateDebut, m.dateFin)}
+                    </span>
+                  </div>
 
-                <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3">
-                  {m.status === "en_attente" &&
-                    (launchMutation.isPending && launchMutation.variables?.id === m.id ? (
-                      <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray">
-                        <Loader2 size={13} className="animate-spin" /> Lancement…
-                      </span>
-                    ) : (
-                      <button
-                        onClick={() => launchMutation.mutate(m)}
-                        className="flex items-center gap-1 text-[13px] font-semibold text-status-success hover:underline"
-                      >
-                        <Play size={13} /> Lancer
-                      </button>
-                    ))}
-                  <button
-                    onClick={() => openEditModal(m)}
-                    className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline"
-                  >
-                    <Pencil size={13} /> Modifier
-                  </button>
-                  <button
-                    onClick={() => setDeleteTarget(m)}
-                    className="flex items-center gap-1 text-[13px] font-semibold text-brand-orange hover:underline"
-                  >
-                    <Trash2 size={13} /> Supprimer
-                  </button>
+                  <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3">
+                    {effectiveStatus === "en_attente" &&
+                      (launchMutation.isPending && launchMutation.variables?.id === m.id ? (
+                        <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray">
+                          <Loader2 size={13} className="animate-spin" /> Lancement…
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => launchMutation.mutate(m)}
+                          className="flex items-center gap-1 text-[13px] font-semibold text-status-success hover:underline"
+                        >
+                          <Play size={13} /> Lancer
+                        </button>
+                      ))}
+                    <button
+                      onClick={() => openEditModal(m)}
+                      className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline"
+                    >
+                      <Pencil size={13} /> Modifier
+                    </button>
+                    <button
+                      onClick={() => setDeleteTarget(m)}
+                      className="flex items-center gap-1 text-[13px] font-semibold text-brand-orange hover:underline"
+                    >
+                      <Trash2 size={13} /> Supprimer
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}

@@ -1,14 +1,4 @@
-import type { MissionStatus } from "@/lib/api/types";
-
-export function computeMissionStatus(dateDebut: string, dateFin: string): MissionStatus {
-  const today = startOfDay(new Date());
-  const debut = startOfDay(new Date(dateDebut));
-  const fin = startOfDay(new Date(dateFin));
-
-  if (debut > today) return "en_attente";
-  if (fin < today) return "terminee";
-  return "en_cours";
-}
+import type { Mission, MissionStatus } from "@/lib/api/types";
 
 function startOfDay(d: Date): Date {
   const copy = new Date(d);
@@ -19,4 +9,30 @@ function startOfDay(d: Date): Date {
 export function isPastDate(dateStr: string): boolean {
   const today = startOfDay(new Date());
   return startOfDay(new Date(dateStr)) < today;
+}
+
+// "Atteinte" = aujourd'hui a rejoint ou dépassé la date de fin (le jour J compte).
+export function hasReachedEndDate(dateFin: string): boolean {
+  const today = startOfDay(new Date());
+  return startOfDay(new Date(dateFin)) <= today;
+}
+
+// Statut affiché : une mission non terminée dont la date de fin est atteinte
+// passe automatiquement en "Terminée", sans action manuelle ni écriture serveur.
+// Le statut stocké (en_attente / en_cours), lui, ne change que via le bouton
+// "Lancer" ou une modification explicite.
+//
+// Garde dateDebut === dateFin : le backend actuel n'expose qu'un seul champ
+// de date (date_mission — voir toMission/missionPayload dans lib/api). Toute
+// mission qui vient du vrai backend a donc dateDebut === dateFin par
+// construction, et non parce que l'utilisateur a choisi une mission d'un
+// seul jour. Se fier à cette date pour auto-terminer ferait passer TOUTES
+// les missions réelles à "Terminée" dès que date_mission est aujourd'hui ou
+// passée, en écrasant le statut réel renvoyé par le backend. Tant que le
+// backend ne fournit pas un champ de fin distinct, on ignore donc l'auto-
+// terminaison dans ce cas et on fait confiance au statut backend tel quel.
+export function getEffectiveStatus(mission: Pick<Mission, "status" | "dateDebut" | "dateFin">): MissionStatus {
+  if (mission.dateDebut === mission.dateFin) return mission.status;
+  if (mission.status !== "terminee" && hasReachedEndDate(mission.dateFin)) return "terminee";
+  return mission.status;
 }

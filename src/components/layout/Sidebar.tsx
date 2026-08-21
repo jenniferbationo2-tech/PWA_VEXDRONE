@@ -6,9 +6,11 @@ import {
   Map as MapIcon,
   FileText,
   Settings,
+  LogOut,
 } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/Auth/AuthContext";
 
 const navItems = [
   { to: "/", label: "Dashboard", icon: LayoutGrid },
@@ -20,6 +22,15 @@ const navItems = [
 ];
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  async function handleLogout() {
+    await logout();
+    onNavigate?.();
+    navigate("/connexion");
+  }
+
   return (
     <aside className="flex h-full w-[240px] flex-shrink-0 flex-col overflow-y-auto bg-brand-blue text-white">
       <div className="flex items-center gap-2 px-8 py-8">
@@ -55,6 +66,14 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
           <Settings size={18} strokeWidth={1.75} />
           Paramètres
         </NavLink>
+        <button
+          type="button"
+          onClick={handleLogout}
+          className="flex w-full items-center gap-3 rounded-sm px-3 py-2.5 text-[14px] font-medium text-white/60 hover:bg-white/5 hover:text-white"
+        >
+          <LogOut size={18} strokeWidth={1.75} />
+          Déconnexion
+        </button>
       </div>
     </aside>
   );

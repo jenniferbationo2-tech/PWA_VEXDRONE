@@ -46,7 +46,11 @@ export function toMission(raw: BackendMission): Mission {
     name: raw.titre,
     zone: raw.zone,
     dateDebut: raw.date_mission,
-    dateFin: raw.date_mission, // le backend n'a qu'une seule date pour l'instant
+    // BLOQUANT BACKEND : pas de champ de fin côté API, donc dateFin === dateDebut
+    // ici à chaque lecture réelle (voir missionPayload dans client.ts pour l'écriture,
+    // et la garde dateDebut===dateFin dans getEffectiveStatus, lib/missionStatus.ts,
+    // qui empêche cette égalité de déclencher à tort l'auto-terminaison à l'affichage).
+    dateFin: raw.date_mission,
     description: raw.description ?? "",
     status: toMissionStatus(raw.statut),
   };

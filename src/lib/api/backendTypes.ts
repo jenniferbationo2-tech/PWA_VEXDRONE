@@ -5,6 +5,11 @@ export interface BackendMission {
   uuid: string;
   titre: string;
   zone: string;
+  // BLOQUANT BACKEND : un seul champ de date, pas de date de fin distincte.
+  // Le frontend a besoin de dateDebut ET dateFin (voir Mission dans types.ts) ;
+  // en attendant un champ dédié côté API (ex: date_fin), toMission (mappers.ts)
+  // fait dateFin = date_mission, ce qui rend dateFin non fiable sur les
+  // données réelles — voir la garde dans getEffectiveStatus (lib/missionStatus.ts).
   date_mission: string;
   statut: "planifiee" | "en_cours" | "terminee" | "annulee";
   description: string | null;
