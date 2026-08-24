@@ -7,7 +7,7 @@ export function AppShell() {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   return (
-    <div className="flex h-screen overflow-hidden bg-brand-off-white">
+    <div className="flex h-screen overflow-hidden bg-brand-off-white dark:bg-brand-dark-bg">
       <div className="hidden md:block">
         <Sidebar />
       </div>

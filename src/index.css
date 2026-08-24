@@ -4,16 +4,16 @@
 
 @layer base {
   body {
-    @apply bg-brand-off-white text-brand-blue-dark font-body text-body;
+    @apply bg-brand-off-white text-brand-blue-dark font-body text-body dark:bg-brand-dark-bg dark:text-white;
   }
   h1 {
-    @apply font-display text-h1 text-brand-blue;
+    @apply font-display text-h1 text-brand-blue dark:text-white;
   }
   h2 {
-    @apply font-display text-h2 text-brand-blue;
+    @apply font-display text-h2 text-brand-blue dark:text-white;
   }
   h3 {
-    @apply font-display text-h3 text-brand-blue;
+    @apply font-display text-h3 text-brand-blue dark:text-white;
   }
   /* Accessibilité — focus clavier toujours visible (règle qualité, pas dans la charte mais requis) */
   :focus-visible {

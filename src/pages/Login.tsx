@@ -41,11 +41,22 @@ export function Login() {
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-brand-blue-dark px-4">
+      <video
+        className="absolute inset-0 h-full w-full object-cover"
+        src="/video/vexdrone-home-video.mp4"
+        autoPlay
+        muted
+        loop
+        playsInline
+      />
+      <div
+        className="pointer-events-none absolute inset-0 bg-brand-blue-dark/70"
+      />
       <div
         className="pointer-events-none absolute inset-0"
         style={{
           background:
-            "radial-gradient(circle at 30% 20%, #274A7A 0%, #1B365D 45%, #0D1B30 100%)",
+            "radial-gradient(circle at 30% 20%, rgba(39,74,122,0.7) 0%, rgba(27,54,93,0.5) 45%, rgba(13,27,48,0.85) 100%)",
         }}
       />
       <div

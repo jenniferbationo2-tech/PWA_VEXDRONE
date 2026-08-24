@@ -23,9 +23,9 @@ export function ConfirmDialog({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-2xl">
-        <h3 className="mb-2 font-display text-[16px] font-bold text-brand-blue-dark">{title}</h3>
-        <p className="mb-5 text-[13px] text-brand-gray">{description}</p>
+      <div className="w-full max-w-sm rounded-lg bg-white p-6 shadow-2xl dark:bg-brand-blue-dark">
+        <h3 className="mb-2 font-display text-[16px] font-bold text-brand-blue-dark dark:text-white">{title}</h3>
+        <p className="mb-5 text-[13px] text-brand-gray dark:text-white/60">{description}</p>
         <div className="flex justify-end gap-2.5">
           <Button type="button" variant="secondary" size="sm" onClick={onCancel}>
             Annuler

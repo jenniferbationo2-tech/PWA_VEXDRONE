@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { AuthProvider } from "@/lib/Auth/AuthContext";
+import { ThemeProvider } from "@/lib/theme/ThemeContext";
 import { NotificationProvider } from "@/lib/notifications/NotificationContext";
 import { ProtectedRoute } from "@/lib/Auth/ProtectedRoute";
 import { AppShell } from "@/components/layout/AppShell";
@@ -26,26 +27,28 @@ function ComingSoon({ title }: { title: string }) {
 export function App() {
   return (
     <BrowserRouter>
-      <AuthProvider>
-        <NotificationProvider>
-          <Routes>
-            <Route path="/connexion" element={<Login />} />
+      <ThemeProvider>
+        <AuthProvider>
+          <NotificationProvider>
+            <Routes>
+              <Route path="/connexion" element={<Login />} />
 
-            <Route element={<ProtectedRoute />}>
-              <Route element={<AppShell />}>
-                <Route path="/" element={<Dashboard />} />
+              <Route element={<ProtectedRoute />}>
+                <Route element={<AppShell />}>
+                  <Route path="/" element={<Dashboard />} />
 
-                <Route path="/missions" element={<Missions />} />
-                <Route path="/vols" element={<Vols />} />
-                <Route path="/anomalies" element={<Anomalies />} />
-                <Route path="/carte" element={<Carte />} />
-                <Route path="/rapports" element={<Rapports />} />
-                <Route path="/Parametres" element={<Parametres />} />
+                  <Route path="/missions" element={<Missions />} />
+                  <Route path="/vols" element={<Vols />} />
+                  <Route path="/anomalies" element={<Anomalies />} />
+                  <Route path="/carte" element={<Carte />} />
+                  <Route path="/rapports" element={<Rapports />} />
+                  <Route path="/Parametres" element={<Parametres />} />
+                </Route>
               </Route>
-            </Route>
-          </Routes>
-        </NotificationProvider>
-      </AuthProvider>
+            </Routes>
+          </NotificationProvider>
+        </AuthProvider>
+      </ThemeProvider>
     </BrowserRouter>
   );
 }

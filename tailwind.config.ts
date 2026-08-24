@@ -15,6 +15,7 @@ export default {
           "orange-light": "#F2955A",
           gray: "#8A8D8F", // Textes secondaires, structures
           "off-white": "#F4F7F9", // Fonds, tableaux de bord
+          "dark-bg": "#0D1B30", // Fond de page en thème sombre
         },
         severity: {
           high: "#E37222",

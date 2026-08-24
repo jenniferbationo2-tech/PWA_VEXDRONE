@@ -1,5 +1,15 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { getMe, login as apiLogin, logout as apiLogout, onAuthExpired, refreshCsrfToken } from "@/lib/api/auth";
+import {
+  changePassword as apiChangePassword,
+  getMe,
+  login as apiLogin,
+  logout as apiLogout,
+  onAuthExpired,
+  refreshCsrfToken,
+  updateAvatar as apiUpdateAvatar,
+  updateProfile as apiUpdateProfile,
+  type ProfileUpdateInput,
+} from "@/lib/api/auth";
 
 // Le backend ne renvoie que "username" de façon garantie sur /users/me.
 // name/organisation/zone sont optionnels : s'il les fournit déjà, l'UI les
@@ -20,6 +30,9 @@ interface AuthContextType {
   isLoading: boolean;
   login: (username: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (input: ProfileUpdateInput) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
+  updateAvatar: (file: File) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -57,8 +70,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   }
 
+  async function updateProfile(input: ProfileUpdateInput) {
+    const updated = await apiUpdateProfile(input);
+    setUser((prev) => (prev ? { ...prev, ...updated } : prev));
+  }
+
+  async function changePassword(currentPassword: string, newPassword: string) {
+    await apiChangePassword(currentPassword, newPassword);
+  }
+
+  async function updateAvatar(file: File) {
+    if (!user) return;
+    const { avatarUrl } = await apiUpdateAvatar(user.username, file);
+    setUser((prev) => (prev ? { ...prev, avatarUrl } : prev));
+  }
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
+    <AuthContext.Provider
+      value={{ user, isLoading, login, logout, updateProfile, changePassword, updateAvatar }}
+    >
       {children}
     </AuthContext.Provider>
   );
