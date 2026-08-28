@@ -49,15 +49,20 @@ export function Missions() {
   const [deleting, setDeleting] = useState(false);
 
   const launchMutation = useMutation({
-    mutationFn: (mission: Mission) =>
-      api.updateMission(mission.id, {
+    mutationFn: async (mission: Mission) => {
+      const updated = await api.updateMission(mission.id, {
         name: mission.name,
         zone: mission.zone,
         description: mission.description,
         dateDebut: mission.dateDebut,
         dateFin: mission.dateFin,
         status: "en_cours",
-      }),
+      });
+      // Deux appels distincts : passer la mission en_cours ne demarre pas de
+      // vol tout seul (voir startVol dans client.ts).
+      await api.startVol(mission.id);
+      return updated;
+    },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
       addNotification({

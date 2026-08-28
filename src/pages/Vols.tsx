@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
@@ -24,11 +25,19 @@ const droneMarkerIcon = L.divIcon({
 });
 
 export function Vols() {
-  const { data: flight, isLoading, isError } = useQuery({
+  const { data: flight, isLoading, isFetching, isError } = useQuery({
     queryKey: ["active-flight"],
     queryFn: api.getActiveFlight,
     refetchInterval: 4000,
   });
+
+  // Tant que data reste undefined (aucun vol n'a jamais ete trouve), React
+  // Query repasse status a "pending" a CHAQUE tentative du refetchInterval —
+  // meme apres un premier echec deja affiche. Sans ce garde-fou, isLoading
+  // redevient true toutes les 4s et la page clignote "Chargement…" / "Aucun
+  // vol en cours" en boucle au lieu de rester stable sur l'etat vide.
+  const hasLoadedOnce = useRef(false);
+  if (!isFetching) hasLoadedOnce.current = true;
 
   // Reutilise le cache de la page Missions si deja charge — pas de requete
   // supplementaire dans ce cas, juste le nom a afficher.
@@ -38,7 +47,7 @@ export function Vols() {
     return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
   }
 
-  if (isLoading) {
+  if (isLoading && !hasLoadedOnce.current) {
     return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;
   }
 
