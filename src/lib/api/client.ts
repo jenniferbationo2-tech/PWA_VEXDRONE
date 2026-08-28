@@ -37,6 +37,13 @@ function extractErrorDetail(body: unknown): string {
   return "Erreur inattendue";
 }
 
+// Sans timeout, un fetch() qui ne recoit jamais de reponse (backend bloque,
+// proxy qui stalle) laisse React Query en isLoading pour toujours — ni retry
+// ni erreur affichee, puisque la promesse ne se resout jamais. 65s : le cold
+// start Render observe en pratique est alle jusqu'a ~60s, un timeout plus
+// court couperait des requetes qui auraient fini par reussir.
+const REQUEST_TIMEOUT_MS = 65_000;
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const isCsrfProtected = CSRF_PROTECTED_METHODS.includes(method);
@@ -48,10 +55,17 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
     if (token) headers.set("X-CSRF-Token", token);
   }
 
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
   const res = await fetch(`${BASE_URL}${path}`, {
     ...options,
     headers,
     credentials: "include",
+    signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
+  }).catch((err) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+    }
+    throw err;
   });
 
   if (!res.ok) {
