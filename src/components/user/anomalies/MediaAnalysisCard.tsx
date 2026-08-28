@@ -23,12 +23,18 @@ export function MediaAnalysisCard() {
   const [files, setFiles] = useState<File[]>([]);
   const [selectionWarning, setSelectionWarning] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [missionId, setMissionId] = useState("");
 
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
 
+  // /images/ et /videos/ exigent tous les deux mission_uuid — import manuel,
+  // donc pas de mission "active" implicite comme pour la capture live
+  // (PhoneCaptureContext.tsx) : le technicien choisit explicitement.
+  const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
+
   const analyzeMutation = useMutation({
-    mutationFn: () => api.analyzeMedia(files),
+    mutationFn: () => api.analyzeMedia(files, missionId),
     onSuccess: (job) => {
       queryClient.setQueryData(["media-analysis", job.id], job);
       setJobId(job.id);
@@ -48,6 +54,8 @@ export function MediaAnalysisCard() {
     if (!jobId || !job || job.status === "en_cours" || notifiedJobRef.current === jobId) return;
     notifiedJobRef.current = jobId;
     if (job.status === "terminee") {
+      queryClient.invalidateQueries({ queryKey: ["anomalies"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
       addNotification({
         title: "Analyse terminée",
         message: "Votre rapport d'analyse est prêt.",
@@ -59,7 +67,7 @@ export function MediaAnalysisCard() {
         message: job.errorMessage ?? "Une erreur est survenue pendant l'analyse.",
       });
     }
-  }, [jobId, job, addNotification]);
+  }, [jobId, job, addNotification, queryClient]);
 
   function handleFilesSelected(fileList: FileList | null) {
     if (!fileList || fileList.length === 0) return;
@@ -99,6 +107,24 @@ export function MediaAnalysisCard() {
       <CardHeader>
         <CardTitle>Analyse de médias</CardTitle>
       </CardHeader>
+
+      {(phase === "idle" || phase === "ready") && (
+        <div className="mb-3">
+          <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Mission</label>
+          <select
+            value={missionId}
+            onChange={(e) => setMissionId(e.target.value)}
+            className="h-10 w-full rounded-sm border border-brand-gray/25 bg-white px-3 text-[14px] text-brand-blue-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
+          >
+            <option value="">Sélectionner une mission</option>
+            {(missions ?? []).map((m) => (
+              <option key={m.id} value={m.id}>
+                {m.name} — {m.zone}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <input
         ref={inputRef}
@@ -154,8 +180,19 @@ export function MediaAnalysisCard() {
             <p className="mb-3 text-[12px] font-medium text-brand-orange">⚠ {selectionWarning}</p>
           )}
 
+          {!missionId && (
+            <p className="mb-3 text-[12px] font-medium text-brand-orange">
+              ⚠ Choisis une mission avant de lancer l'analyse.
+            </p>
+          )}
+
           <div className="flex items-center gap-2.5">
-            <Button variant="primary" size="sm" onClick={() => analyzeMutation.mutate()}>
+            <Button
+              variant="primary"
+              size="sm"
+              disabled={!missionId}
+              onClick={() => analyzeMutation.mutate()}
+            >
               Analyser
             </Button>
             <button

@@ -32,9 +32,10 @@ import type {
   BackendMission,
   BackendPlatformUser,
   BackendReport,
+  BackendVideo,
   BackendVol,
 } from "./backendTypes";
-import { getMockAnalysisJob, startMockAnalysisJob } from "./mediaAnalysisMock";
+import { startMockAnalysisJob, getMockAnalysisJob } from "./mediaAnalysisMock";
 import { fetchCurrentWeather } from "./weather";
 
 const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
@@ -108,6 +109,37 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data;
 }
 
+// multipart/form-data : ne peut pas passer par apiFetch, qui force
+// Content-Type: application/json (casserait la frontière multipart — le
+// navigateur doit fixer lui-même le boundary).
+async function apiUpload<T>(path: string, form: FormData): Promise<T> {
+  const headers = new Headers();
+  const token = getStoredCsrfToken();
+  if (token) headers.set("X-CSRF-Token", token);
+
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: form,
+    signal: timeout,
+  }).catch((err) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+    }
+    throw err;
+  });
+
+  if (!res.ok) {
+    if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
+    throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
+  }
+  const data = await res.json();
+  captureCsrfToken(data);
+  return data;
+}
+
 // appareil/drone_uuid : fixés à la création uniquement, absents de
 // MissionUpdate (confirmé sur le schéma live) — deux payloads distincts pour
 // ne pas risquer de les envoyer sur un PATCH.
@@ -147,6 +179,82 @@ async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
   );
   const imageByUuid = new Map(images.filter((i): i is BackendImage => i !== null).map((i) => [i.uuid, i]));
   return raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid)));
+}
+
+// Recompresse un fichier image en JPEG qualite 0.8 avant l'upload (memes
+// reglages que la capture live, voir PhoneCaptureContext.tsx) — recommande
+// par la doc backend (compression cote app, pas cote serveur). Renvoie le
+// fichier original si la compression echoue plutot que de bloquer l'import.
+const IMAGE_COMPRESSION_QUALITY = 0.8;
+
+async function compressImageFile(file: File): Promise<Blob> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const canvas = document.createElement("canvas");
+    canvas.width = bitmap.width;
+    canvas.height = bitmap.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return file;
+    ctx.drawImage(bitmap, 0, 0);
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", IMAGE_COMPRESSION_QUALITY)
+    );
+    return blob ?? file;
+  } catch {
+    return file;
+  }
+}
+
+// Import manuel (MediaAnalysisCard) : pas d'endpoint "job" cote backend, donc
+// la progression est suivie ici, cote client, pendant l'enchainement reel
+// upload -> extraction (video) -> analyse. Fonctionne par polling (comme le
+// mock qu'il remplace) pour ne rien changer a l'UI qui consomme ce job.
+interface MediaJobState {
+  status: MediaAnalysisJob["status"];
+  progress: number;
+  fileCount: number;
+  errorMessage?: string;
+}
+const mediaJobs = new Map<string, MediaJobState>();
+
+async function runMediaAnalysis(jobId: string, files: File[], missionId: string) {
+  const setJob = (patch: Partial<MediaJobState>) => {
+    const current = mediaJobs.get(jobId);
+    if (current) mediaJobs.set(jobId, { ...current, ...patch });
+  };
+  try {
+    // Phase 1 : upload (+ extraction pour une video) de chaque fichier —
+    // compte pour la premiere moitie de la progression affichee.
+    const imageIds: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      if (file.type.startsWith("video/")) {
+        const video = await api.uploadVideo(missionId, file);
+        imageIds.push(...(await api.extractVideoFrames(video.id)));
+      } else {
+        const compressed = await compressImageFile(file);
+        const image = await api.uploadImage(missionId, compressed);
+        imageIds.push(image.id);
+      }
+      setJob({ progress: Math.round(((i + 1) / files.length) * 50) });
+    }
+
+    // Phase 2 : analyse de chaque image resultante (photos directes + frames
+    // extraites) — un echec isole (422 : moteur indisponible, deja analysee)
+    // ne doit pas faire echouer tout l'import, voir doc backend §6.2.
+    for (let i = 0; i < imageIds.length; i++) {
+      await api.analyzeImage(imageIds[i]).catch(() => {});
+      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, imageIds.length)) * 50) });
+    }
+
+    setJob({ status: "terminee", progress: 100 });
+  } catch (err) {
+    setJob({
+      status: "echouee",
+      progress: 100,
+      errorMessage: err instanceof Error ? err.message : "Erreur pendant l'analyse.",
+    });
+  }
 }
 
 // Les stats d'anomalies n'ont pas d'endpoint dedie : recalculees cote client
@@ -281,13 +389,23 @@ export const api = {
     return toAnomaly(raw, image);
   },
 
-  // Pas encore d'endpoint upload/analyse media cote backend : reste mocke meme en mode reel.
-  analyzeMedia: async (files: File[]): Promise<MediaAnalysisJob> => {
-    return delay(startMockAnalysisJob(files.length), 200);
+  // missionId requis : /images/ et /videos/ exigent tous les deux mission_uuid.
+  // Lance l'enchainement reel (voir runMediaAnalysis) sans l'attendre — le
+  // job se suit ensuite via getMediaAnalysisJob, meme pattern de polling que
+  // le mock qu'il remplace.
+  analyzeMedia: async (files: File[], missionId: string): Promise<MediaAnalysisJob> => {
+    if (USE_MOCKS) return delay(startMockAnalysisJob(files.length), 200);
+    const id = `media-${Date.now()}-${Math.round(Math.random() * 1000)}`;
+    mediaJobs.set(id, { status: "en_cours", progress: 0, fileCount: files.length });
+    runMediaAnalysis(id, files, missionId);
+    return { id, status: "en_cours", progress: 0, fileCount: files.length };
   },
 
   getMediaAnalysisJob: async (jobId: string): Promise<MediaAnalysisJob> => {
-    return delay(getMockAnalysisJob(jobId), 150);
+    if (USE_MOCKS) return delay(getMockAnalysisJob(jobId), 150);
+    const job = mediaJobs.get(jobId);
+    if (!job) throw new Error("Analyse introuvable");
+    return { id: jobId, ...job };
   },
 
   // Meteo temps reel via Open-Meteo (voir weather.ts) : externe au backend VEXDRONE.
@@ -304,12 +422,19 @@ export const api = {
       return delay(mockFlight, 150);
     }
     // Pas de vol "global" cote backend : un vol est rattache a une mission.
-    // On prend la mission en_cours et on regarde si elle a un vol actif.
-    const missions = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
-    const activeMission = missions.data.find((m) => m.statut === "en_cours");
-    if (!activeMission) throw new Error("Aucune mission en cours");
-    const raw = await apiFetch<BackendVol>(`/api/v1/vols/actif?mission_uuid=${activeMission.uuid}`);
-    return toFlight(raw);
+    // Plusieurs missions peuvent etre en_cours a la fois (tests, oublis de
+    // cloture...) — on essaie chacune jusqu'a en trouver une avec un vol
+    // actif, plutot que de se fier a la premiere trouvee : une mission
+    // en_cours sans vol (ex. lancee avant le fix de "Lancer") bloquerait
+    // sinon la recherche indefiniment sur un 404.
+    const missions = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/?items_per_page=100");
+    const activeMissions = missions.data.filter((m) => m.statut === "en_cours");
+    if (activeMissions.length === 0) throw new Error("Aucune mission en cours");
+    for (const mission of activeMissions) {
+      const raw = await apiFetch<BackendVol>(`/api/v1/vols/actif?mission_uuid=${mission.uuid}`).catch(() => null);
+      if (raw) return toFlight(raw);
+    }
+    throw new Error("Aucun vol actif pour les missions en cours");
   },
 
   // POST /vols/ passe directement le vol en "en_cours" — même moment que le
@@ -340,15 +465,12 @@ export const api = {
     });
   },
 
-  // multipart/form-data : ne peut pas passer par apiFetch, qui force
-  // Content-Type: application/json (casserait la frontière multipart).
   uploadImage: async (
     missionId: string,
     blob: Blob,
     gps?: { lat: number; lng: number }
   ): Promise<{ id: string }> => {
     if (USE_MOCKS) return delay({ id: `img-${Date.now()}` }, 200);
-
     const form = new FormData();
     form.append("fichier", blob, "capture.jpg");
     form.append("mission_uuid", missionId);
@@ -356,23 +478,7 @@ export const api = {
       form.append("latitude", String(gps.lat));
       form.append("longitude", String(gps.lng));
     }
-
-    const headers = new Headers();
-    const token = getStoredCsrfToken();
-    if (token) headers.set("X-CSRF-Token", token);
-
-    const res = await fetch(`${BASE_URL}/api/v1/images/`, {
-      method: "POST",
-      credentials: "include",
-      headers,
-      body: form,
-    });
-    if (!res.ok) {
-      if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
-      throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
-    }
-    const data = await res.json();
-    captureCsrfToken(data);
+    const data = await apiUpload<{ uuid: string }>("/api/v1/images/", form);
     return { id: data.uuid };
   },
 
@@ -381,6 +487,31 @@ export const api = {
   analyzeImage: async (imageId: string): Promise<void> => {
     if (USE_MOCKS) return delay(undefined, 200);
     await apiFetch<unknown>(`/api/v1/images/${imageId}/analyser`, { method: "POST" });
+  },
+
+  // ---- Import manuel (fichiers déjà enregistrés) — §3/§5 doc backend ----
+  // Sans rapport avec la capture live (PhoneCaptureContext.tsx, qui upload
+  // des photos directement pendant un vol) : ce flux sert à importer des
+  // médias existants (galerie, export drone...) via MediaAnalysisCard. Une
+  // vidéo n'est jamais analysée telle quelle — le backend en extrait des
+  // frames (1/2s) traitées ensuite comme des photos normales.
+  uploadVideo: async (missionId: string, file: File): Promise<{ id: string }> => {
+    if (USE_MOCKS) return delay({ id: `vid-${Date.now()}` }, 300);
+    const form = new FormData();
+    form.append("fichier", file);
+    form.append("mission_uuid", missionId);
+    const data = await apiUpload<BackendVideo>("/api/v1/videos/", form);
+    return { id: data.uuid };
+  },
+
+  // Lance l'extraction puis renvoie les uuid des frames obtenues (chacune une
+  // Image normale) — les deux étapes sont toujours faites ensemble ici, rien
+  // n'a besoin du détail de progression de l'extraction elle-même.
+  extractVideoFrames: async (videoId: string): Promise<string[]> => {
+    if (USE_MOCKS) return delay([`img-${Date.now()}-1`, `img-${Date.now()}-2`], 400);
+    await apiFetch<unknown>(`/api/v1/videos/${videoId}/extraire`, { method: "POST" });
+    const frames = await apiFetch<{ data: BackendImage[] }>(`/api/v1/videos/${videoId}/frames?items_per_page=100`);
+    return frames.data.map((f) => f.uuid);
   },
 
   // Tous les champs sont optionnels côté API (mise à jour partielle) —

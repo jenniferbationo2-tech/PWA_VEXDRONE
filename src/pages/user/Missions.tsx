@@ -74,6 +74,16 @@ export function Missions() {
         link: "/vols",
       });
     },
+    // Sans ca, un echec de startFlight (mission deja passee en_cours mais
+    // vol jamais cree) ne s'affichait nulle part — la page Vols restait sur
+    // "Aucun vol en cours" sans aucun indice de ce qui s'est passe.
+    onError: (err) => {
+      queryClient.invalidateQueries({ queryKey: ["missions"] });
+      addNotification({
+        title: "Lancement incomplet",
+        message: err instanceof Error ? err.message : "Le vol n'a pas pu démarrer. Réessaie depuis Missions.",
+      });
+    },
   });
 
   const filtered = useMemo(() => {

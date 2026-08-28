@@ -117,3 +117,20 @@ export interface BackendImage {
   date_capture: string | null;
   statut_analyse: string;
 }
+
+// Flux d'import manuel uniquement (fichier video deja enregistre) — sans
+// rapport avec la capture live (PhoneCaptureContext.tsx), qui upload des
+// photos directement et ne passe jamais par /videos/.
+export interface BackendVideo {
+  uuid: string;
+  mission_uuid: string;
+  chemin_fichier: string;
+  nom_original: string;
+  duree_secondes: number | null;
+  taille_octets: number;
+  type_mime: string;
+  statut_extraction: "en_attente" | "en_cours" | "extraite" | "echec";
+  nombre_frames_extraites: number;
+  created_at: string;
+  updated_at: string | null;
+}
