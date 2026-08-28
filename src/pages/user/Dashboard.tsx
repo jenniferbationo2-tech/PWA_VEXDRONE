@@ -1,10 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Wifi } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { StatCard } from "@/components/dashboard/StatCard";
-import { AnomaliesChart } from "@/components/dashboard/AnomaliesChart";
-import { SeverityDonut } from "@/components/dashboard/SeverityDonut";
-import { WeatherCard } from "@/components/dashboard/WeatherCard";
+import { StatCard } from "@/components/user/dashboard/StatCard";
+import { AnomaliesChart } from "@/components/user/dashboard/AnomaliesChart";
+import { SeverityDonut } from "@/components/user/dashboard/SeverityDonut";
+import { WeatherCard } from "@/components/user/dashboard/WeatherCard";
 
 export function Dashboard() {
   const { data, isLoading, isError } = useQuery({

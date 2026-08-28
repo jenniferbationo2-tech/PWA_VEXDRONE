@@ -5,22 +5,37 @@ export interface BackendMission {
   uuid: string;
   titre: string;
   zone: string;
-  // BLOQUANT BACKEND : un seul champ de date, pas de date de fin distincte.
-  // Le frontend a besoin de dateDebut ET dateFin (voir Mission dans types.ts) ;
-  // en attendant un champ dédié côté API (ex: date_fin), toMission (mappers.ts)
-  // fait dateFin = date_mission, ce qui rend dateFin non fiable sur les
-  // données réelles — voir la garde dans getEffectiveStatus (lib/missionStatus.ts).
-  date_mission: string;
+  date_debut: string;
+  date_fin: string;
+  // Choix du dispositif de capture, fixé à la création (pas de champ dans le
+  // PATCH, confirmé sur MissionUpdate). drone_uuid est obligatoire si "drone",
+  // doit être absent sinon — voir missionPayload dans client.ts.
+  appareil: "appareil_photo" | "drone";
+  drone_uuid: string | null;
   statut: "planifiee" | "en_cours" | "terminee" | "annulee";
   description: string | null;
   created_at: string;
   updated_at: string | null;
 }
 
+// Les 9 classes réelles du modèle IA (doc backend du 22/08/2026, §6.1) — les
+// anciennes valeurs (fissure, vegetation, isolateur_endommage, cable_deteriore,
+// structure_inclinee) ne sont plus renvoyées par l'API.
+export type BackendAnomalyType =
+  | "isolateur_casse"
+  | "corrosion"
+  | "antenne_endommagee"
+  | "broken_tower"
+  | "broken_cable"
+  | "vegetation_cautious"
+  | "vegetation_critical"
+  | "vegetation_low"
+  | "autre";
+
 export interface BackendAnomaly {
   uuid: string;
   image_uuid: string;
-  type_anomalie: string;
+  type_anomalie: BackendAnomalyType;
   confiance: number;
   bbox_x: number;
   bbox_y: number;
@@ -62,6 +77,35 @@ export interface BackendReport {
   date_mission: string;
   nombre_anomalies: number;
   pdf_url: string | null;
+}
+
+export interface BackendDrone {
+  uuid: string;
+  identifiant: string;
+  modele: string | null;
+  statut: "disponible" | "en_vol" | "maintenance" | "hors_service";
+  created_at: string;
+  updated_at: string | null;
+}
+
+export interface BackendEntreprise {
+  uuid: string;
+  nom: string;
+  statut: "active" | "bloquee";
+  is_deleted: boolean;
+  created_at: string;
+  updated_at: string | null;
+}
+
+// UserRead (GET /users/, superadmin) — pas UserMeRead, forme différente
+// (voir lib/Auth/AuthContext.tsx pour le profil du user courant).
+export interface BackendPlatformUser {
+  id: number;
+  name: string;
+  username: string;
+  email: string;
+  role: "superadmin" | "admin" | "utilisateur";
+  entreprise_id: string | null;
 }
 
 export interface BackendImage {

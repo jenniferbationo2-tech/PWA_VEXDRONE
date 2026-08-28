@@ -1,12 +1,36 @@
-import type { Anomaly, DashboardSummary, Flight, MediaAnalysisJob, Mission, NewMissionInput, Report } from "./types";
-import { mockDashboardSummary, mockMissions, mockReports, mockAnomalies, mockFlight } from "./mockData";
+import type {
+  Anomaly,
+  DashboardSummary,
+  Drone,
+  Entreprise,
+  Flight,
+  MediaAnalysisJob,
+  Mission,
+  NewAdminInput,
+  NewMissionInput,
+  PlatformUser,
+  Report,
+} from "./types";
+import {
+  mockDashboardSummary,
+  mockDrones,
+  mockEntreprises,
+  mockMissions,
+  mockPlatformUsers,
+  mockReports,
+  mockAnomalies,
+  mockFlight,
+} from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
-import { toAnomaly, toBackendMissionStatus, toFlight, toMission, toReport } from "./mappers";
+import { toAnomaly, toBackendMissionStatus, toDrone, toEntreprise, toFlight, toMission, toPlatformUser, toReport } from "./mappers";
 import type {
   BackendAnomaly,
   BackendDashboardStats,
+  BackendDrone,
+  BackendEntreprise,
   BackendImage,
   BackendMission,
+  BackendPlatformUser,
   BackendReport,
   BackendVol,
 } from "./backendTypes";
@@ -70,18 +94,28 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data;
 }
 
-// BLOQUANT BACKEND : le modèle Mission côté API n'a qu'un seul champ de date
-// (date_mission — voir BackendMission dans backendTypes.ts). input.dateFin
-// n'est donc jamais envoyé et sera reconstruit égal à dateDebut à la
-// prochaine lecture (voir toMission dans mappers.ts). Tant qu'un champ de fin
-// distinct n'est pas ajouté côté backend, la date de fin choisie dans le
-// formulaire ne survit pas à un aller-retour serveur (voir la garde dans
-// getEffectiveStatus, lib/missionStatus.ts, qui compense côté affichage).
-function missionPayload(input: NewMissionInput) {
+// appareil/drone_uuid : fixés à la création uniquement, absents de
+// MissionUpdate (confirmé sur le schéma live) — deux payloads distincts pour
+// ne pas risquer de les envoyer sur un PATCH.
+function missionCreatePayload(input: NewMissionInput) {
   return {
     titre: input.name,
     zone: input.zone,
-    date_mission: input.dateDebut,
+    date_debut: input.dateDebut,
+    date_fin: input.dateFin,
+    appareil: input.appareil,
+    drone_uuid: input.appareil === "drone" ? input.droneId : undefined,
+    statut: toBackendMissionStatus(input.status),
+    description: input.description,
+  };
+}
+
+function missionUpdatePayload(input: NewMissionInput) {
+  return {
+    titre: input.name,
+    zone: input.zone,
+    date_debut: input.dateDebut,
+    date_fin: input.dateFin,
     statut: toBackendMissionStatus(input.status),
     description: input.description,
   };
@@ -168,7 +202,7 @@ export const api = {
     }
     const raw = await apiFetch<BackendMission>("/api/v1/missions/", {
       method: "POST",
-      body: JSON.stringify(missionPayload(input)),
+      body: JSON.stringify(missionCreatePayload(input)),
     });
     return toMission(raw);
   },
@@ -177,13 +211,14 @@ export const api = {
     if (USE_MOCKS) {
       const index = mockMissions.findIndex((m) => m.id === id);
       if (index === -1) throw new Error("Mission introuvable");
-      mockMissions[index] = { ...input, id };
+      // appareil/droneId ne sont pas modifiables : on garde ceux de la mission existante.
+      mockMissions[index] = { ...input, id, appareil: mockMissions[index].appareil, droneId: mockMissions[index].droneId };
       return delay(mockMissions[index], 400);
     }
     // Le PATCH renvoie 204 sans corps : on relit la mission a jour ensuite.
     await apiFetch<void>(`/api/v1/missions/${id}`, {
       method: "PATCH",
-      body: JSON.stringify(missionPayload(input)),
+      body: JSON.stringify(missionUpdatePayload(input)),
     });
     const raw = await apiFetch<BackendMission>(`/api/v1/missions/${id}`);
     return toMission(raw);
@@ -197,6 +232,12 @@ export const api = {
       return delay(undefined, 300);
     }
     await apiFetch<void>(`/api/v1/missions/${id}`, { method: "DELETE" });
+  },
+
+  getDrones: async (): Promise<Drone[]> => {
+    if (USE_MOCKS) return delay([...mockDrones]);
+    const raw = await apiFetch<{ data: BackendDrone[] }>("/api/v1/drones/");
+    return raw.data.map(toDrone);
   },
 
   getReports: async (): Promise<Report[]> => {
@@ -255,5 +296,202 @@ export const api = {
     if (!activeMission) throw new Error("Aucune mission en cours");
     const raw = await apiFetch<BackendVol>(`/api/v1/vols/actif?mission_uuid=${activeMission.uuid}`);
     return toFlight(raw);
+  },
+
+  // POST /vols/ passe directement le vol en "en_cours" — même moment que le
+  // clic sur "Lancer" une mission (drone ou téléphone, les deux ont un Vol).
+  startFlight: async (missionId: string): Promise<Flight> => {
+    if (USE_MOCKS) {
+      mockFlight.missionId = missionId;
+      mockFlight.status = "en_cours";
+      mockFlight.imagesCaptured = 0;
+      mockFlight.battery = 100;
+      return delay(mockFlight, 300);
+    }
+    const raw = await apiFetch<BackendVol>("/api/v1/vols/", {
+      method: "POST",
+      body: JSON.stringify({ mission_uuid: missionId }),
+    });
+    return toFlight(raw);
+  },
+
+  endFlight: async (flightId: string): Promise<void> => {
+    if (USE_MOCKS) {
+      mockFlight.status = "terminee";
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/vols/${flightId}`, {
+      method: "PATCH",
+      body: JSON.stringify({ statut: "terminee" }),
+    });
+  },
+
+  // multipart/form-data : ne peut pas passer par apiFetch, qui force
+  // Content-Type: application/json (casserait la frontière multipart).
+  uploadImage: async (
+    missionId: string,
+    blob: Blob,
+    gps?: { lat: number; lng: number }
+  ): Promise<{ id: string }> => {
+    if (USE_MOCKS) return delay({ id: `img-${Date.now()}` }, 200);
+
+    const form = new FormData();
+    form.append("fichier", blob, "capture.jpg");
+    form.append("mission_uuid", missionId);
+    if (gps) {
+      form.append("latitude", String(gps.lat));
+      form.append("longitude", String(gps.lng));
+    }
+
+    const headers = new Headers();
+    const token = getStoredCsrfToken();
+    if (token) headers.set("X-CSRF-Token", token);
+
+    const res = await fetch(`${BASE_URL}/api/v1/images/`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: form,
+    });
+    if (!res.ok) {
+      if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
+      throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
+    }
+    const data = await res.json();
+    captureCsrfToken(data);
+    return { id: data.uuid };
+  },
+
+  // Synchrone côté API ; peut renvoyer 422 (moteur indisponible, ou image déjà
+  // analysée) — traité comme non bloquant par l'appelant (voir doc backend §6.2).
+  analyzeImage: async (imageId: string): Promise<void> => {
+    if (USE_MOCKS) return delay(undefined, 200);
+    await apiFetch<unknown>(`/api/v1/images/${imageId}/analyser`, { method: "POST" });
+  },
+
+  // Tous les champs sont optionnels côté API (mise à jour partielle) —
+  // JSON.stringify élague déjà les clés undefined.
+  updateFlightTelemetry: async (
+    flightId: string,
+    patch: {
+      imagesCaptured?: number;
+      gps?: { lat: number; lng: number };
+      battery?: number;
+      connection?: "wifi" | "4g" | "hors_ligne";
+    }
+  ): Promise<void> => {
+    if (USE_MOCKS) {
+      if (patch.imagesCaptured !== undefined) mockFlight.imagesCaptured = patch.imagesCaptured;
+      if (patch.gps) mockFlight.gps = patch.gps;
+      if (patch.battery !== undefined) mockFlight.battery = patch.battery;
+      if (patch.connection) mockFlight.droneConnection = patch.connection;
+      return delay(undefined, 150);
+    }
+    await apiFetch<void>(`/api/v1/vols/${flightId}`, {
+      method: "PATCH",
+      body: JSON.stringify({
+        images_capturees: patch.imagesCaptured,
+        latitude: patch.gps?.lat,
+        longitude: patch.gps?.lng,
+        batterie: patch.battery,
+        connexion_drone: patch.connection,
+      }),
+    });
+  },
+
+  // ---- Réservé SUPERADMIN ----
+
+  getEntreprises: async (): Promise<Entreprise[]> => {
+    if (USE_MOCKS) return delay([...mockEntreprises]);
+    const raw = await apiFetch<{ data: BackendEntreprise[] }>("/api/v1/entreprises/?items_per_page=100");
+    return raw.data.map(toEntreprise);
+  },
+
+  createEntreprise: async (nom: string): Promise<Entreprise> => {
+    if (USE_MOCKS) {
+      const entreprise: Entreprise = { id: `e-${Date.now()}`, nom, status: "active", createdAt: new Date().toISOString() };
+      mockEntreprises.unshift(entreprise);
+      return delay(entreprise, 400);
+    }
+    const raw = await apiFetch<BackendEntreprise>("/api/v1/entreprises/", {
+      method: "POST",
+      body: JSON.stringify({ nom }),
+    });
+    return toEntreprise(raw);
+  },
+
+  // Forme de retour de PATCH non confirmée (contrairement à bloquer/debloquer/
+  // delete, tous les trois vérifiés en 204) — le composant appelant relit la
+  // liste ensuite plutôt que de compter sur une valeur ici.
+  renameEntreprise: async (id: string, nom: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const entreprise = mockEntreprises.find((e) => e.id === id);
+      if (entreprise) entreprise.nom = nom;
+      return delay(undefined, 300);
+    }
+    await apiFetch<unknown>(`/api/v1/entreprises/${id}`, { method: "PATCH", body: JSON.stringify({ nom }) });
+  },
+
+  blockEntreprise: async (id: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const entreprise = mockEntreprises.find((e) => e.id === id);
+      if (entreprise) entreprise.status = "bloquee";
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/entreprises/${id}/bloquer`, { method: "POST" });
+  },
+
+  unblockEntreprise: async (id: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const entreprise = mockEntreprises.find((e) => e.id === id);
+      if (entreprise) entreprise.status = "active";
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/entreprises/${id}/debloquer`, { method: "POST" });
+  },
+
+  deleteEntreprise: async (id: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const index = mockEntreprises.findIndex((e) => e.id === id);
+      if (index !== -1) mockEntreprises.splice(index, 1);
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/entreprises/${id}`, { method: "DELETE" });
+  },
+
+  // GET /users/ ne filtre pas par entreprise côté API (juste la pagination) :
+  // on récupère tout (items_per_page large, taille attendue faible pour ce POC)
+  // et le composant appelant filtre par entrepriseId côté client.
+  getPlatformUsers: async (): Promise<PlatformUser[]> => {
+    if (USE_MOCKS) return delay([...mockPlatformUsers]);
+    const raw = await apiFetch<{ data: BackendPlatformUser[] }>("/api/v1/users/?items_per_page=100");
+    return raw.data.map(toPlatformUser);
+  },
+
+  createAdminAccount: async (input: NewAdminInput): Promise<PlatformUser> => {
+    if (USE_MOCKS) {
+      const user: PlatformUser = {
+        id: `u-${Date.now()}`,
+        name: input.name,
+        username: input.username,
+        email: input.email,
+        role: "admin",
+        entrepriseId: input.entrepriseId,
+      };
+      mockPlatformUsers.unshift(user);
+      return delay(user, 400);
+    }
+    const raw = await apiFetch<BackendPlatformUser>("/api/v1/users/", {
+      method: "POST",
+      body: JSON.stringify({
+        name: input.name,
+        username: input.username,
+        email: input.email,
+        password: input.password,
+        role: "admin",
+        entreprise_id: input.entrepriseId,
+      }),
+    });
+    return toPlatformUser(raw);
   },
 };

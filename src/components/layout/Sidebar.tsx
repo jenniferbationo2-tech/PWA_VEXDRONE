@@ -7,23 +7,45 @@ import {
   FileText,
   Settings,
   LogOut,
+  Users,
+  Building2,
+  type LucideIcon,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/Auth/AuthContext";
+import { normalizeRole, type Role } from "@/lib/Auth/roles";
 
-const navItems = [
-  { to: "/", label: "Dashboard", icon: LayoutGrid },
-  { to: "/missions", label: "Missions", icon: ClipboardList },
-  { to: "/vols", label: "Vols", icon: PlaneTakeoff },
-  { to: "/anomalies", label: "IA & Anomalies", icon: ScanSearch },
-  { to: "/carte", label: "Carte", icon: MapIcon },
-  { to: "/rapports", label: "Rapports", icon: FileText },
-];
+interface NavItem {
+  to: string;
+  label: string;
+  icon: LucideIcon;
+}
+
+const NAV_ITEMS: Record<Role, NavItem[]> = {
+  technicien: [
+    { to: "/", label: "Dashboard", icon: LayoutGrid },
+    { to: "/missions", label: "Missions", icon: ClipboardList },
+    { to: "/vols", label: "Vols", icon: PlaneTakeoff },
+    { to: "/anomalies", label: "IA & Anomalies", icon: ScanSearch },
+    { to: "/carte", label: "Carte", icon: MapIcon },
+    { to: "/rapports", label: "Rapports", icon: FileText },
+  ],
+  admin: [
+    { to: "/admin", label: "Dashboard", icon: LayoutGrid },
+    { to: "/admin/techniciens", label: "Techniciens", icon: Users },
+  ],
+  super_admin: [
+    { to: "/super-admin", label: "Dashboard", icon: LayoutGrid },
+    { to: "/super-admin/entreprises", label: "Entreprises", icon: Building2 },
+  ],
+};
 
 export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
-  const { logout } = useAuth();
+  const { user, logout } = useAuth();
   const navigate = useNavigate();
+
+  const navItems = NAV_ITEMS[normalizeRole(user?.role)];
 
   async function handleLogout() {
     await logout();
@@ -43,7 +65,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
             onClick={onNavigate}
             key={to}
             to={to}
-            end={to === "/"}
+            end={to === "/" || to === "/admin" || to === "/super-admin"}
             className={({ isActive }) =>
               cn(
                 "flex items-center gap-3 rounded-sm px-3 py-2.5 text-[14px] font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white",

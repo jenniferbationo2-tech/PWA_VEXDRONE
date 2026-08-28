@@ -3,6 +3,7 @@ import { Bell, Menu, Moon, Sun } from "lucide-react";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { useTheme } from "@/lib/theme/ThemeContext";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
+import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 import { prettifyUsername } from "@/lib/utils";
 import { IconButton } from "@/components/ui/IconButton";
 import { NotificationsModal } from "@/components/layout/NotificationsModal";
@@ -12,6 +13,7 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
   const { user } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { unreadCount } = useNotifications();
+  const { isCapturing } = usePhoneCapture();
   const [notifOpen, setNotifOpen] = useState(false);
 
   if (!user) return null;
@@ -31,6 +33,16 @@ export function Topbar({ onMenuClick }: { onMenuClick?: () => void } = {}) {
       <div className="hidden md:block" />
 
       <div className="flex items-center gap-1.5">
+        {isCapturing && (
+          <span className="mr-1 flex items-center gap-1.5 whitespace-nowrap rounded-full bg-brand-orange/10 px-3 py-1 text-[12px] font-semibold text-brand-orange">
+            <span className="relative flex h-2 w-2">
+              <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-brand-orange opacity-75" />
+              <span className="relative inline-flex h-2 w-2 rounded-full bg-brand-orange" />
+            </span>
+            Capture en direct
+          </span>
+        )}
+
         <IconButton
           icon={theme === "dark" ? Sun : Moon}
           label={theme === "dark" ? "Passer en thème clair" : "Passer en thème sombre"}

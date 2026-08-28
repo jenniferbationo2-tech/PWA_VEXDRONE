@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { IconButton } from "@/components/ui/IconButton";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { cn } from "@/lib/utils";
-import { NewMissionModal } from "@/components/missions/NewMissionModal";
+import { NewMissionModal } from "@/components/user/missions/NewMissionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
@@ -49,17 +49,25 @@ export function Missions() {
   const [deleting, setDeleting] = useState(false);
 
   const launchMutation = useMutation({
-    mutationFn: (mission: Mission) =>
-      api.updateMission(mission.id, {
+    mutationFn: async (mission: Mission) => {
+      const updated = await api.updateMission(mission.id, {
         name: mission.name,
         zone: mission.zone,
         description: mission.description,
         dateDebut: mission.dateDebut,
         dateFin: mission.dateFin,
         status: "en_cours",
-      }),
+        appareil: mission.appareil,
+        droneId: mission.droneId,
+      });
+      // Un Vol existe pour les deux méthodes d'inspection (drone ou
+      // téléphone) — c'est lui que /vols/actif et la page Vols suivent.
+      await api.startFlight(mission.id);
+      return updated;
+    },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["active-flight"] });
       addNotification({
         title: "Mission lancée",
         message: `"${updated.name}" est en cours — suivez le vol en direct.`,

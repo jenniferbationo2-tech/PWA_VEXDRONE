@@ -11,10 +11,10 @@ import {
   type ProfileUpdateInput,
 } from "@/lib/api/auth";
 
-// Le backend ne renvoie que "username" de façon garantie sur /users/me.
-// name/organisation/zone sont optionnels : s'il les fournit déjà, l'UI les
-// affichera automatiquement (voir Sidebar) ; sinon ces champs restent undefined
-// et l'UI se rabat proprement sur username.
+// name/email/role viennent de /users/me (confirmé : schéma UserMeRead).
+// organisation/zone/avatarUrl n'existent pas côté API — stockés en local par
+// lib/api/auth.ts et fusionnés dans le User renvoyé par getMe/updateProfile,
+// donc restent undefined tant que l'utilisateur ne les a jamais renseignés.
 export interface User {
   username: string;
   name?: string;
@@ -28,7 +28,7 @@ export interface User {
 interface AuthContextType {
   user: User | null;
   isLoading: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (username: string, password: string) => Promise<User>;
   logout: () => Promise<void>;
   updateProfile: (input: ProfileUpdateInput) => Promise<void>;
   changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
@@ -63,6 +63,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     await apiLogin(username, password);
     const me = await getMe();
     setUser(me);
+    return me;
   }
 
   async function logout() {
@@ -71,7 +72,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function updateProfile(input: ProfileUpdateInput) {
-    const updated = await apiUpdateProfile(input);
+    if (!user) return;
+    const updated = await apiUpdateProfile(user.username, input);
     setUser((prev) => (prev ? { ...prev, ...updated } : prev));
   }
 

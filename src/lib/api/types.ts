@@ -12,6 +12,47 @@ export type Severity = "eleve" | "moyen" | "faible";
 export type AnomalyStatus = "non_traitee" | "traitee";
 export type MissionStatus = "en_attente" | "en_cours" | "terminee";
 export type FlightStatus = "en_attente" | "en_cours" | "terminee";
+export type CaptureDevice = "appareil_photo" | "drone";
+export type DroneStatus = "disponible" | "en_vol" | "maintenance" | "hors_service";
+
+export interface Drone {
+  id: string;
+  identifiant: string;
+  modele: string;
+  status: DroneStatus;
+}
+
+export type EntrepriseStatus = "active" | "bloquee";
+export type PlatformRole = "super_admin" | "admin" | "technicien";
+
+export interface Entreprise {
+  id: string;
+  nom: string;
+  status: EntrepriseStatus;
+  createdAt: string;
+}
+
+// Compte tel que renvoyé par GET /users/ (superadmin) — pas le profil
+// courant (voir User dans AuthContext.tsx, forme différente).
+export interface PlatformUser {
+  id: string;
+  name: string;
+  username: string;
+  email: string;
+  role: PlatformRole;
+  entrepriseId?: string;
+}
+
+// Payload pour créer un ADMIN d'entreprise (POST /users/, role forcé côté
+// appelant) — le rôle utilisateur (technicien) se crée via /users/team côté
+// admin, pas ici.
+export interface NewAdminInput {
+  name: string;
+  username: string;
+  email: string;
+  password: string;
+  entrepriseId: string;
+}
 
 export interface Anomaly {
   id: string;
@@ -34,6 +75,10 @@ export interface Mission {
   dateFin: string; // ISO 8601
   description: string;
   status: MissionStatus;
+  // Fixé à la création, jamais modifiable ensuite (aucun champ appareil dans
+  // le PATCH côté API) — voir NewMissionModal.
+  appareil: CaptureDevice;
+  droneId?: string;
 }
 
 // Payload envoyé à la création — l'id et le status sont calculés/attribués ailleurs

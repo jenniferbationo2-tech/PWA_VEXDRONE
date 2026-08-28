@@ -5,7 +5,7 @@ import { api } from "@/lib/api/client";
 import type { AnomalyStatus } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MediaAnalysisCard } from "@/components/anomalies/MediaAnalysisCard";
+import { MediaAnalysisCard } from "@/components/user/anomalies/MediaAnalysisCard";
 import { cn, formatRelativeTime } from "@/lib/utils";
 
 const FILTERS: { value: AnomalyStatus | "toutes"; label: string }[] = [

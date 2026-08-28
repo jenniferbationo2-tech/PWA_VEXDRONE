@@ -62,11 +62,23 @@ async function mockLogout() {
   sessionStorage.removeItem("vexdrone_mock_user");
 }
 
+// Démo/mock uniquement : on déduit le rôle du nom d'utilisateur pour pouvoir
+// tester les 3 parcours sans backend — ex. "admin.sonabel" -> admin. Valeurs
+// alignées sur l'enum UserRole confirmé côté API (GET /openapi.json).
+function guessMockRole(username: string): string {
+  const lower = username.toLowerCase();
+  if (lower.includes("superadmin") || lower.includes("super-admin") || lower.includes("super_admin")) {
+    return "superadmin";
+  }
+  if (lower.includes("admin")) return "admin";
+  return "utilisateur";
+}
+
 async function mockGetMe() {
   const username = sessionStorage.getItem("vexdrone_mock_user");
   if (!username) throw new Error("Non authentifié");
   const profile = JSON.parse(localStorage.getItem(MOCK_PROFILE_KEY) ?? "{}");
-  return { username, ...profile };
+  return { username, role: guessMockRole(username), ...profile };
 }
 
 async function mockUpdateProfile(input: ProfileUpdateInput) {
@@ -122,41 +134,47 @@ async function realGetMe() {
   return data;
 }
 
-// BLOQUANT BACKEND : pas de contrat confirmé pour ces deux endpoints (aucun
-// BackendUser dans backendTypes.ts, contrairement aux missions/anomalies).
-// Chemins REST plausibles en attendant confirmation par l'équipe backend.
-async function realUpdateProfile(input: ProfileUpdateInput) {
-  const res = await fetch(`${BASE_URL}/api/v1/users/me`, {
-    method: "PATCH",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
-    body: JSON.stringify(input),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? "Impossible de mettre à jour le profil");
+// organisation/zone n'existent pas dans UserUpdate côté API (confirmé via
+// GET /openapi.json — schéma name/email/profile_image_url/... uniquement,
+// additionalProperties: false donc les envoyer ferait échouer tout le PATCH)
+// : gardés en local uniquement, comme l'avatar juste en dessous.
+async function realUpdateProfile(username: string, input: ProfileUpdateInput) {
+  const { organisation, zone, ...backendFields } = input;
+  const hasBackendFields = backendFields.name !== undefined || backendFields.email !== undefined;
+
+  if (hasBackendFields) {
+    // PATCH /users/{username} renvoie un message générique, pas le profil à
+    // jour (voir schéma Response Update User Profile ... Patch) : on relit
+    // via /users/me juste après pour repartir d'un état fiable.
+    const res = await fetch(`${BASE_URL}/api/v1/users/${username}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
+      body: JSON.stringify(backendFields),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error(body?.detail ?? "Impossible de mettre à jour le profil");
+    }
   }
-  const data = await res.json();
-  captureCsrfToken(data);
-  return data;
+
+  if (organisation !== undefined || zone !== undefined) {
+    localSetProfileExtras(username, { organisation, zone });
+  }
+
+  const me = await realGetMe();
+  return { ...me, ...localGetProfileExtras(username) };
 }
 
-async function realChangePassword(currentPassword: string, newPassword: string) {
-  const res = await fetch(`${BASE_URL}/api/v1/auth/change-password`, {
-    method: "POST",
-    credentials: "include",
-    headers: { "Content-Type": "application/json", "X-CSRF-Token": csrfToken ?? "" },
-    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
-  });
-  if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? "Impossible de modifier le mot de passe");
-  }
+// BLOQUANT BACKEND : aucun endpoint de changement de mot de passe côté API
+// (vérifié dans GET /openapi.json — aucune route password/reset/change).
+async function realChangePassword(): Promise<never> {
+  throw new Error("Le changement de mot de passe n'est pas encore disponible côté serveur.");
 }
 
-// L'avatar n'a aucun équivalent côté API (pas de stockage d'image utilisateur
-// prévu) : conservé en local, que l'app tourne en mock ou contre le vrai
-// backend — même logique que analyzeMedia dans client.ts.
+// L'avatar (upload de fichier) et organisation/zone n'ont aucun équivalent
+// côté API pour l'instant : conservés en local, que l'app tourne en mock ou
+// contre le vrai backend — même logique que analyzeMedia dans client.ts.
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -174,6 +192,15 @@ async function localUpdateAvatar(username: string, file: File): Promise<{ avatar
 
 function localGetAvatar(username: string): string | null {
   return localStorage.getItem(`vexdrone_avatar_${username}`);
+}
+
+function localSetProfileExtras(username: string, extras: { organisation?: string; zone?: string }): void {
+  const current = JSON.parse(localStorage.getItem(`vexdrone_profile_extra_${username}`) ?? "{}");
+  localStorage.setItem(`vexdrone_profile_extra_${username}`, JSON.stringify({ ...current, ...extras }));
+}
+
+function localGetProfileExtras(username: string): { organisation?: string; zone?: string } {
+  return JSON.parse(localStorage.getItem(`vexdrone_profile_extra_${username}`) ?? "{}");
 }
 
 // Recupere un jeton CSRF perdu (ex: apres un rechargement de page) a partir
@@ -195,13 +222,20 @@ export async function refreshCsrfToken(): Promise<void> {
 // ---- Export unique, le reste de l'app ne sait pas laquelle est active ----
 export const login = USE_MOCK ? mockLogin : realLogin;
 export const logout = USE_MOCK ? mockLogout : realLogout;
-export const updateProfile = USE_MOCK ? mockUpdateProfile : realUpdateProfile;
-export const changePassword = USE_MOCK ? mockChangePassword : realChangePassword;
+
+export async function updateProfile(username: string, input: ProfileUpdateInput) {
+  return USE_MOCK ? mockUpdateProfile(input) : realUpdateProfile(username, input);
+}
+
+export async function changePassword(currentPassword: string, newPassword: string) {
+  return USE_MOCK ? mockChangePassword(currentPassword, newPassword) : realChangePassword();
+}
 
 export async function getMe() {
   const me = await (USE_MOCK ? mockGetMe() : realGetMe());
   const avatarUrl = localGetAvatar(me.username);
-  return avatarUrl ? { ...me, avatarUrl } : me;
+  const extras = USE_MOCK ? {} : localGetProfileExtras(me.username);
+  return { ...me, ...extras, ...(avatarUrl ? { avatarUrl } : {}) };
 }
 
 export async function updateAvatar(username: string, file: File) {

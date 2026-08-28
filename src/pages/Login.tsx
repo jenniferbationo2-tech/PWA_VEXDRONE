@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/Auth/AuthContext";
+import { roleHome } from "@/lib/Auth/roles";
 
 
 export function Login() {
@@ -30,8 +31,8 @@ export function Login() {
 
     setLoading(true);
     try {
-      await login(username, password);
-      navigate("/");
+      const me = await login(username, password);
+      navigate(roleHome(me.role));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Identifiants incorrects.");
     } finally {
@@ -75,13 +76,13 @@ export function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="username" className="mb-1.5 block text-[13px] font-medium text-white/80">
-              Utilisateur(email)
+              Nom d'utilisateur
             </label>
             <input
               id="username"
               type="text"
               autoComplete="username"
-              placeholder="votre.organisation@.bf"
+              placeholder="mounira"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-11 w-full rounded-sm border border-white/10 bg-white/[0.06] px-3 text-[14px] text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50"

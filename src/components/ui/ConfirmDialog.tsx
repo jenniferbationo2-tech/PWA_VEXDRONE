@@ -5,6 +5,7 @@ interface Props {
   title: string;
   description: string;
   confirmLabel?: string;
+  loadingLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
   isLoading?: boolean;
@@ -15,6 +16,7 @@ export function ConfirmDialog({
   title,
   description,
   confirmLabel = "Confirmer",
+  loadingLabel = "Suppression…",
   onConfirm,
   onCancel,
   isLoading,
@@ -38,7 +40,7 @@ export function ConfirmDialog({
             onClick={onConfirm}
             disabled={isLoading}
           >
-            {isLoading ? "Suppression…" : confirmLabel}
+            {isLoading ? loadingLabel : confirmLabel}
           </Button>
         </div>
       </div>

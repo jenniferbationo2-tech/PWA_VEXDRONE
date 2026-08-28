@@ -4,7 +4,7 @@ import { FileText, Download, Search, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 import type { Report } from "@/lib/api/types";
-import { ReportDetailModal } from "@/components/reports/ReportDetailModal";
+import { ReportDetailModal } from "@/components/user/reports/ReportDetailModal";
 import { Input } from "@/components/ui/input";
 import { partitionReports } from "@/lib/reportArchive";
 

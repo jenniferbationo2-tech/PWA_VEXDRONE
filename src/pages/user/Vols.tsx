@@ -1,10 +1,14 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
-import { Wifi, WifiOff } from "lucide-react";
+import { Square, Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { useNotifications } from "@/lib/notifications/NotificationContext";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -24,6 +28,10 @@ const droneMarkerIcon = L.divIcon({
 });
 
 export function Vols() {
+  const queryClient = useQueryClient();
+  const { addNotification } = useNotifications();
+  const [confirmEnd, setConfirmEnd] = useState(false);
+
   const { data: flight, isLoading, isError } = useQuery({
     queryKey: ["active-flight"],
     queryFn: api.getActiveFlight,
@@ -37,6 +45,34 @@ export function Vols() {
   function missionName(missionId: string) {
     return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
   }
+
+  const activeMission = flight ? missions?.find((m) => m.id === flight.missionId) : undefined;
+  const isPhoneMission = activeMission?.appareil === "appareil_photo";
+
+  const endMutation = useMutation({
+    mutationFn: async () => {
+      if (!flight) return;
+      const mission = missions?.find((m) => m.id === flight.missionId);
+      if (!mission) throw new Error("Mission introuvable");
+      await api.endFlight(flight.id);
+      await api.updateMission(mission.id, {
+        name: mission.name,
+        zone: mission.zone,
+        description: mission.description,
+        dateDebut: mission.dateDebut,
+        dateFin: mission.dateFin,
+        status: "terminee",
+        appareil: mission.appareil,
+        droneId: mission.droneId,
+      });
+    },
+    onSuccess: () => {
+      setConfirmEnd(false);
+      queryClient.invalidateQueries({ queryKey: ["active-flight"] });
+      queryClient.invalidateQueries({ queryKey: ["missions"] });
+      addNotification({ title: "Mission terminée", message: "Le vol a été clôturé." });
+    },
+  });
 
   if (isLoading) {
     return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;
@@ -61,18 +97,35 @@ export function Vols() {
           <h1>Vol en cours</h1>
           <p className="mt-0.5 text-[14px] text-brand-gray">Mission : {missionName(flight.missionId)}</p>
         </div>
-        <span
-          className={cn(
-            "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-semibold",
-            connected ? "bg-status-success/10 text-status-success" : "bg-brand-orange/10 text-brand-orange"
-          )}
-        >
-          {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
-          {connected
-            ? `Drone connecté · ${flight.droneConnection === "wifi" ? "Wi-Fi" : "4G"}`
-            : "Drone hors ligne"}
-        </span>
+        <div className="flex items-center gap-2.5">
+          <span
+            className={cn(
+              "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-semibold",
+              connected ? "bg-status-success/10 text-status-success" : "bg-brand-orange/10 text-brand-orange"
+            )}
+          >
+            {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
+            {connected
+              ? `${isPhoneMission ? "Téléphone" : "Drone"} connecté · ${flight.droneConnection === "wifi" ? "Wi-Fi" : "4G"}`
+              : `${isPhoneMission ? "Téléphone" : "Drone"} hors ligne`}
+          </span>
+          <Button variant="accent" size="sm" className="gap-1.5" onClick={() => setConfirmEnd(true)}>
+            <Square size={13} />
+            Terminer
+          </Button>
+        </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmEnd}
+        title="Terminer la mission"
+        description="Le vol sera clôturé et la mission passera au statut Terminée. Cette action est définitive."
+        confirmLabel="Terminer"
+        loadingLabel="Clôture…"
+        onConfirm={() => endMutation.mutate()}
+        onCancel={() => setConfirmEnd(false)}
+        isLoading={endMutation.isPending}
+      />
 
       <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
         <div className="mb-6 flex items-center">
@@ -101,11 +154,18 @@ export function Vols() {
           ))}
         </div>
 
-        <div className="grid grid-cols-3 divide-x divide-brand-blue/[0.06] text-center">
-          <div>
-            <div className="text-[13px] text-brand-gray">Altitude</div>
-            <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">{flight.altitude} m</div>
-          </div>
+        <div
+          className={cn(
+            "grid divide-x divide-brand-blue/[0.06] text-center",
+            isPhoneMission ? "grid-cols-2" : "grid-cols-3"
+          )}
+        >
+          {!isPhoneMission && (
+            <div>
+              <div className="text-[13px] text-brand-gray">Altitude</div>
+              <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">{flight.altitude} m</div>
+            </div>
+          )}
           <div>
             <div className="text-[13px] text-brand-gray">Batterie</div>
             <div
@@ -135,14 +195,14 @@ export function Vols() {
                 key={i}
                 className="flex aspect-square items-center justify-center rounded-md bg-brand-off-white text-[11px] text-brand-gray"
               >
-                image drone
+                photo
               </div>
             ))}
           </div>
         </div>
 
         <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
-          <h3 className="mb-4">Position du drone</h3>
+          <h3 className="mb-4">{isPhoneMission ? "Position" : "Position du drone"}</h3>
           <div className="overflow-hidden rounded-md">
             <MapContainer
               center={[flight.gps.lat, flight.gps.lng]}

@@ -1,5 +1,35 @@
-import type { Mission, Anomaly, Flight, Report, Severity, MissionStatus } from "./types";
-import type { BackendMission, BackendAnomaly, BackendImage, BackendReport, BackendVol } from "./backendTypes";
+import type { Mission, Anomaly, Flight, Report, Severity, MissionStatus, Drone, Entreprise, PlatformUser } from "./types";
+import type {
+  BackendAnomalyType,
+  BackendMission,
+  BackendAnomaly,
+  BackendDrone,
+  BackendEntreprise,
+  BackendImage,
+  BackendPlatformUser,
+  BackendReport,
+  BackendVol,
+} from "./backendTypes";
+
+const ANOMALY_TYPE_LABELS: Record<BackendAnomalyType, string> = {
+  isolateur_casse: "Isolateur cassé",
+  corrosion: "Corrosion",
+  antenne_endommagee: "Antenne endommagée",
+  broken_tower: "Pylône endommagé",
+  broken_cable: "Câble endommagé",
+  vegetation_cautious: "Végétation — Vigilance",
+  vegetation_critical: "Végétation — Critique",
+  vegetation_low: "Végétation — Faible",
+  autre: "Autre",
+};
+
+// Le paramètre reste large (string) par prudence runtime : le type précis
+// n'engage que ce qu'on écrit dans ANOMALY_TYPE_LABELS, pas ce que l'API
+// renverra réellement. Une valeur inconnue s'affiche telle quelle plutôt que
+// de disparaître silencieusement.
+export function toAnomalyTypeLabel(type_anomalie: string): string {
+  return ANOMALY_TYPE_LABELS[type_anomalie as BackendAnomalyType] ?? type_anomalie;
+}
 
 // Le backend a 4 niveaux de gravité, l'interface actuelle en attend 3.
 // On garde "critique" séparé plutôt que de le fondre dans "eleve" —
@@ -45,14 +75,47 @@ export function toMission(raw: BackendMission): Mission {
     id: raw.uuid,
     name: raw.titre,
     zone: raw.zone,
-    dateDebut: raw.date_mission,
-    // BLOQUANT BACKEND : pas de champ de fin côté API, donc dateFin === dateDebut
-    // ici à chaque lecture réelle (voir missionPayload dans client.ts pour l'écriture,
-    // et la garde dateDebut===dateFin dans getEffectiveStatus, lib/missionStatus.ts,
-    // qui empêche cette égalité de déclencher à tort l'auto-terminaison à l'affichage).
-    dateFin: raw.date_mission,
+    dateDebut: raw.date_debut,
+    dateFin: raw.date_fin,
     description: raw.description ?? "",
     status: toMissionStatus(raw.statut),
+    appareil: raw.appareil,
+    droneId: raw.drone_uuid ?? undefined,
+  };
+}
+
+export function toDrone(raw: BackendDrone): Drone {
+  return {
+    id: raw.uuid,
+    identifiant: raw.identifiant,
+    modele: raw.modele ?? "",
+    status: raw.statut,
+  };
+}
+
+export function toEntreprise(raw: BackendEntreprise): Entreprise {
+  return {
+    id: raw.uuid,
+    nom: raw.nom,
+    status: raw.statut,
+    createdAt: raw.created_at,
+  };
+}
+
+const PLATFORM_ROLE_MAP = {
+  superadmin: "super_admin",
+  admin: "admin",
+  utilisateur: "technicien",
+} as const;
+
+export function toPlatformUser(raw: BackendPlatformUser): PlatformUser {
+  return {
+    id: String(raw.id),
+    name: raw.name,
+    username: raw.username,
+    email: raw.email,
+    role: PLATFORM_ROLE_MAP[raw.role],
+    entrepriseId: raw.entreprise_id ?? undefined,
   };
 }
 
@@ -61,7 +124,7 @@ export function toMission(raw: BackendMission): Mission {
 export function toAnomaly(raw: BackendAnomaly, image?: BackendImage): Anomaly {
   return {
     id: raw.uuid,
-    type: raw.type_anomalie,
+    type: toAnomalyTypeLabel(raw.type_anomalie),
     zone: "", // TODO: a deriver de la mission via l'image, pas encore cablé
     confidence: raw.confiance,
     severity: toSeverity(raw.gravite),

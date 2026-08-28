@@ -1,0 +1,2 @@
+Le module Vidéo (/videos/* — upload, extraction de frames) qu'on avait mis de côté pendant la discussion sur le mode téléphone.
+Brancher Admin/SuperAdmin sur le vrai backend (/entreprises, /users/team, /missions/entreprise) — pour l'instant ce sont encore des pages provisoires.

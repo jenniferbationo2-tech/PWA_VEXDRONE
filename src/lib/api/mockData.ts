@@ -1,4 +1,22 @@
-import type { Anomaly, DashboardSummary, Flight, Mission, Report } from "./types";
+import type { Anomaly, DashboardSummary, Drone, Entreprise, Flight, Mission, PlatformUser, Report } from "./types";
+
+export const mockDrones: Drone[] = [
+  { id: "d-1", identifiant: "DRONE-01", modele: "DJI Mavic 3T", status: "disponible" },
+  { id: "d-2", identifiant: "DRONE-02", modele: "DJI Mavic 3T", status: "disponible" },
+  { id: "d-3", identifiant: "DRONE-03", modele: "DJI Matrice 30T", status: "maintenance" },
+];
+
+export const mockEntreprises: Entreprise[] = [
+  { id: "e-1", nom: "Sonabel", status: "active", createdAt: "2026-05-12T09:00:00Z" },
+  { id: "e-2", nom: "Faso Energie", status: "active", createdAt: "2026-06-20T09:00:00Z" },
+  { id: "e-3", nom: "Onea", status: "bloquee", createdAt: "2026-04-02T09:00:00Z" },
+];
+
+export const mockPlatformUsers: PlatformUser[] = [
+  { id: "u-1", name: "Gérant Sonabel", username: "gerantsonabel", email: "gerant@sonabel.bf", role: "admin", entrepriseId: "e-1" },
+  { id: "u-2", name: "Demo User", username: "demouser", email: "demo.user@sonabel.bf", role: "technicien", entrepriseId: "e-1" },
+  { id: "u-3", name: "Gérant Faso Energie", username: "gerantfaso", email: "gerant@fasoenergie.bf", role: "admin", entrepriseId: "e-2" },
+];
 
 
 export const mockDashboardSummary: DashboardSummary = {
@@ -61,6 +79,8 @@ export const mockMissions: Mission[] = [
     dateFin: "2026-03-12",
     description: "Inspection structurelle du tablier et des piles",
     status: "terminee",
+    appareil: "drone",
+    droneId: "d-1",
   },
   {
     id: "m-2",
@@ -70,6 +90,8 @@ export const mockMissions: Mission[] = [
     dateFin: "2026-08-20",
     description: "Détection de corrosion et isolateurs défectueux",
     status: "en_cours",
+    appareil: "drone",
+    droneId: "d-2",
   },
   {
     id: "m-3",
@@ -79,6 +101,7 @@ export const mockMissions: Mission[] = [
     dateFin: "2026-08-25",
     description: "Contrôle annuel de l'ouvrage et des abords",
     status: "en_attente",
+    appareil: "appareil_photo",
   },
   {
     id: "m-4",
@@ -88,6 +111,7 @@ export const mockMissions: Mission[] = [
     dateFin: "2026-06-03",
     description: "Vérification des pales et du mât",
     status: "terminee",
+    appareil: "appareil_photo",
   },
 ];
 
@@ -116,7 +140,7 @@ export const mockAnomalies: Anomaly[] = [
   },
   {
     id: "A-038",
-    type: "Poteau incliné",
+    type: "Pylône endommagé",
     zone: "Zone C",
     confidence: 78,
     severity: "moyen",
@@ -127,7 +151,7 @@ export const mockAnomalies: Anomaly[] = [
   },
   {
     id: "A-030",
-    type: "Végétation envahissante",
+    type: "Végétation — Critique",
     zone: "Zone D",
     confidence: 95,
     severity: "faible",
