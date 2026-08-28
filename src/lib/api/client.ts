@@ -293,21 +293,6 @@ export const api = {
   // Meteo temps reel via Open-Meteo (voir weather.ts) : externe au backend VEXDRONE.
   getWeather: fetchCurrentWeather,
 
-  // Demarre un vol pour une mission (POST /vols/, statut en_cours immediat).
-  // A appeler en plus de updateMission(..., { status: "en_cours" }), pas a sa
-  // place : PATCH /missions ne cree jamais de vol. Sans cet appel,
-  // GET /vols/actif ne trouve jamais rien (404 permanent, cf. doc backend
-  // "bug d'integration Vols/Flights"). Pas de telemetrie en mode mock, le
-  // vol demarre avec les valeurs par defaut du backend (0m, 100%, hors ligne)
-  // tant que l'app terrain n'existe pas — decision actee, pas de simulation.
-  startVol: async (missionId: string): Promise<void> => {
-    if (USE_MOCKS) return;
-    await apiFetch<BackendVol>("/api/v1/vols/", {
-      method: "POST",
-      body: JSON.stringify({ mission_uuid: missionId }),
-    });
-  },
-
   getActiveFlight: async (): Promise<Flight> => {
     if (USE_MOCKS) {
       mockFlight.imagesCaptured += Math.floor(Math.random() * 2);

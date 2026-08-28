@@ -51,8 +51,6 @@ export function Missions() {
   const launchMutation = useMutation({
     mutationFn: async (mission: Mission) => {
       const updated = await api.updateMission(mission.id, {
-    mutationFn: async (mission: Mission) => {
-      const updated = await api.updateMission(mission.id, {
         name: mission.name,
         zone: mission.zone,
         description: mission.description,

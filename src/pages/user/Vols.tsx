@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { MapContainer, TileLayer, Marker } from "react-leaflet";
 import L from "leaflet";
@@ -32,7 +32,7 @@ export function Vols() {
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
 
-  const { data: flight, isLoading, isError } = useQuery({
+  const { data: flight, isLoading, isFetching, isError } = useQuery({
     queryKey: ["active-flight"],
     queryFn: api.getActiveFlight,
     refetchInterval: 4000,
@@ -82,7 +82,7 @@ export function Vols() {
     },
   });
 
-  if (isLoading) {
+  if (isLoading && !hasLoadedOnce.current) {
     return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;
   }
 
