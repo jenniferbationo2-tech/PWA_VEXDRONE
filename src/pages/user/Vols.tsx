@@ -38,6 +38,14 @@ export function Vols() {
     refetchInterval: 4000,
   });
 
+  // Tant que data reste undefined (aucun vol n'a jamais ete trouve), React
+  // Query repasse status a "pending" a CHAQUE tentative du refetchInterval —
+  // meme apres un premier echec deja affiche. Sans ce garde-fou, isLoading
+  // redevient true toutes les 4s et la page clignote "Chargement…" / "Aucun
+  // vol en cours" en boucle au lieu de rester stable sur l'etat vide.
+  const hasLoadedOnce = useRef(false);
+  if (!isFetching) hasLoadedOnce.current = true;
+
   // Reutilise le cache de la page Missions si deja charge — pas de requete
   // supplementaire dans ce cas, juste le nom a afficher.
   const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
