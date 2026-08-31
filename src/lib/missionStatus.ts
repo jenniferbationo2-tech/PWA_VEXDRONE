@@ -20,8 +20,10 @@ export function hasReachedEndDate(dateFin: string): boolean {
 // Statut affiché : une mission non terminée dont la date de fin est atteinte
 // passe automatiquement en "Terminée", sans action manuelle ni écriture serveur.
 // Le statut stocké (en_attente / en_cours), lui, ne change que via le bouton
-// "Lancer" ou une modification explicite.
+// "Lancer" ou une modification explicite. Une mission "annulee" ne doit
+// jamais être promue "Terminée" par cette règle, même après sa date de fin.
 export function getEffectiveStatus(mission: Pick<Mission, "status" | "dateFin">): MissionStatus {
-  if (mission.status !== "terminee" && hasReachedEndDate(mission.dateFin)) return "terminee";
+  const isTerminal = mission.status === "terminee" || mission.status === "annulee";
+  if (!isTerminal && hasReachedEndDate(mission.dateFin)) return "terminee";
   return mission.status;
 }

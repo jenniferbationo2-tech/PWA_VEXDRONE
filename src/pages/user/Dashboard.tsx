@@ -4,7 +4,9 @@ import { api } from "@/lib/api/client";
 import { StatCard } from "@/components/user/dashboard/StatCard";
 import { AnomaliesChart } from "@/components/user/dashboard/AnomaliesChart";
 import { SeverityDonut } from "@/components/user/dashboard/SeverityDonut";
-import { WeatherCard } from "@/components/user/dashboard/WeatherCard";
+import { WeatherCard } from "@/components/dashboard/WeatherCard";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { StatGridSkeleton } from "@/components/ui/StatGridSkeleton";
 
 export function Dashboard() {
   const { data, isLoading, isError } = useQuery({
@@ -13,7 +15,21 @@ export function Dashboard() {
   });
 
   if (isLoading) {
-    return <div className="text-brand-gray">Chargement du tableau de bord…</div>;
+    return (
+      <div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <Skeleton className="h-7 w-44" />
+          <Skeleton className="h-[62px] w-52 rounded-lg" />
+        </div>
+        <div className="mb-6">
+          <StatGridSkeleton count={4} />
+        </div>
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
+          <Skeleton className="h-[280px] rounded-lg lg:col-span-2" />
+          <Skeleton className="h-[280px] rounded-lg" />
+        </div>
+      </div>
+    );
   }
 
   if (isError || !data) {

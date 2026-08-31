@@ -14,6 +14,11 @@ export interface BackendMission {
   drone_uuid: string | null;
   statut: "planifiee" | "en_cours" | "terminee" | "annulee";
   description: string | null;
+  // Propriétaire de la mission (confirmé sur MissionRead, champ requis) —
+  // sert à résoudre le nom du technicien sur la vue Missions entreprise
+  // (GET /missions/entreprise), absent des autres écrans qui n'affichent que
+  // les missions de l'utilisateur courant.
+  user_id: number;
   created_at: string;
   updated_at: string | null;
 }
@@ -106,6 +111,7 @@ export interface BackendPlatformUser {
   email: string;
   role: "superadmin" | "admin" | "utilisateur";
   entreprise_id: string | null;
+  is_deleted: boolean;
 }
 
 export interface BackendImage {

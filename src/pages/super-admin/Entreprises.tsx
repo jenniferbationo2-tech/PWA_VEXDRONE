@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { NewEntrepriseModal } from "@/components/super-admin/entreprises/NewEntrepriseModal";
 import { EntrepriseDetailModal } from "@/components/super-admin/entreprises/EntrepriseDetailModal";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 export function SuperAdminEntreprises() {
   const queryClient = useQueryClient();
@@ -58,9 +59,7 @@ export function SuperAdminEntreprises() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-brand-gray shadow-card dark:border-white/10 dark:bg-brand-blue-dark">
-          Chargement…
-        </div>
+        <TableSkeleton columns={4} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card dark:border-white/10 dark:bg-brand-blue-dark">
           <p className="font-semibold text-brand-blue-dark dark:text-white">Impossible de charger les entreprises</p>

@@ -6,8 +6,12 @@ import type {
   Flight,
   MediaAnalysisJob,
   Mission,
+  MissionStatus,
   NewAdminInput,
+  NewDroneInput,
   NewMissionInput,
+  NewTeamMemberInput,
+  Paginated,
   PlatformUser,
   Report,
 } from "./types";
@@ -17,12 +21,22 @@ import {
   mockEntreprises,
   mockMissions,
   mockPlatformUsers,
+  mockTeamMembers,
   mockReports,
   mockAnomalies,
   mockFlight,
 } from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
-import { toAnomaly, toBackendMissionStatus, toDrone, toEntreprise, toFlight, toMission, toPlatformUser, toReport } from "./mappers";
+import {
+  toAnomaly,
+  toBackendMissionStatus,
+  toDrone,
+  toEntreprise,
+  toFlight,
+  toMission,
+  toPlatformUser,
+  toReport,
+} from "./mappers";
 import type {
   BackendAnomaly,
   BackendDashboardStats,
@@ -362,6 +376,45 @@ export const api = {
     return raw.data.map(toDrone);
   },
 
+  // Flotte partagée par toute la plateforme, pas cloisonnée par entreprise
+  // (aucun entreprise_id sur Drone côté API, confirmé sur le schéma live —
+  // voir BACKEND_REQUESTS.md §1). Réservé aux administrateurs.
+  createDrone: async (input: NewDroneInput): Promise<Drone> => {
+    if (USE_MOCKS) {
+      const drone: Drone = { id: `d-${Date.now()}`, identifiant: input.identifiant, modele: input.modele ?? "", status: "disponible" };
+      mockDrones.unshift(drone);
+      return delay(drone, 400);
+    }
+    const raw = await apiFetch<BackendDrone>("/api/v1/drones/", {
+      method: "POST",
+      body: JSON.stringify({ identifiant: input.identifiant, modele: input.modele || undefined }),
+    });
+    return toDrone(raw);
+  },
+
+  updateDroneStatus: async (id: string, status: Drone["status"]): Promise<Drone> => {
+    if (USE_MOCKS) {
+      const drone = mockDrones.find((d) => d.id === id);
+      if (!drone) throw new Error("Drone introuvable");
+      drone.status = status;
+      return delay(drone, 300);
+    }
+    const raw = await apiFetch<BackendDrone>(`/api/v1/drones/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ statut: status }),
+    });
+    return toDrone(raw);
+  },
+
+  removeDrone: async (id: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const index = mockDrones.findIndex((d) => d.id === id);
+      if (index !== -1) mockDrones.splice(index, 1);
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/drones/${id}`, { method: "DELETE" });
+  },
+
   getReports: async (): Promise<Report[]> => {
     if (USE_MOCKS) return delay(mockReports);
     const raw = await apiFetch<{ data: BackendReport[] }>("/api/v1/reports/?items_per_page=100");
@@ -622,6 +675,7 @@ export const api = {
         email: input.email,
         role: "admin",
         entrepriseId: input.entrepriseId,
+        isDeleted: false,
       };
       mockPlatformUsers.unshift(user);
       return delay(user, 400);
@@ -638,5 +692,91 @@ export const api = {
       }),
     });
     return toPlatformUser(raw);
+  },
+
+  // ---- Réservé ADMIN ----
+
+  // L'entreprise et le rôle (utilisateur) sont forcés côté serveur à partir
+  // du compte Admin appelant — jamais dans le payload, voir doc /users/team.
+  getTeamMembers: async (): Promise<PlatformUser[]> => {
+    if (USE_MOCKS) return delay([...mockTeamMembers]);
+    const raw = await apiFetch<{ data: BackendPlatformUser[] }>("/api/v1/users/team?items_per_page=100");
+    return raw.data.map(toPlatformUser);
+  },
+
+  createTeamMember: async (input: NewTeamMemberInput): Promise<PlatformUser> => {
+    if (USE_MOCKS) {
+      const member: PlatformUser = {
+        id: `u-${Date.now()}`,
+        name: input.name,
+        username: input.username,
+        email: input.email,
+        role: "technicien",
+        entrepriseId: mockTeamMembers[0]?.entrepriseId,
+        isDeleted: false,
+      };
+      mockTeamMembers.unshift(member);
+      return delay(member, 400);
+    }
+    const raw = await apiFetch<BackendPlatformUser>("/api/v1/users/team", {
+      method: "POST",
+      body: JSON.stringify(input),
+    });
+    return toPlatformUser(raw);
+  },
+
+  // Suppression douce (confirmé sur la doc /users/team/{username}) — le
+  // compte disparaît de la liste mais n'est pas détruit côté API.
+  removeTeamMember: async (username: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const index = mockTeamMembers.findIndex((m) => m.username === username);
+      if (index !== -1) mockTeamMembers.splice(index, 1);
+      return delay(undefined, 300);
+    }
+    await apiFetch<unknown>(`/api/v1/users/team/${username}`, { method: "DELETE" });
+  },
+
+  // Vue transverse des missions de toute l'entreprise (tous techniciens
+  // confondus) — seule liste du POC avec une pagination réellement exploitée
+  // côté API (total_count/has_more), le reste chargeant tout d'un coup.
+  getEntrepriseMissions: async (params: {
+    status?: MissionStatus;
+    page?: number;
+    itemsPerPage?: number;
+  } = {}): Promise<Paginated<Mission>> => {
+    const page = params.page ?? 1;
+    const itemsPerPage = params.itemsPerPage ?? 10;
+
+    if (USE_MOCKS) {
+      const filtered = params.status ? mockMissions.filter((m) => m.status === params.status) : mockMissions;
+      const start = (page - 1) * itemsPerPage;
+      const pageData = filtered.slice(start, start + itemsPerPage);
+      return delay({
+        data: pageData,
+        totalCount: filtered.length,
+        hasMore: start + itemsPerPage < filtered.length,
+        page,
+        itemsPerPage,
+      });
+    }
+
+    const query = new URLSearchParams({ page: String(page), items_per_page: String(itemsPerPage) });
+    if (params.status) query.set("statut", toBackendMissionStatus(params.status));
+
+    const raw = await apiFetch<{
+      data: BackendMission[];
+      total_count: number;
+      has_more: boolean;
+      page: number | null;
+      items_per_page: number | null;
+    }>(`/api/v1/missions/entreprise?${query}`);
+
+    return {
+      data: raw.data.map(toMission),
+      totalCount: raw.total_count,
+      hasMore: raw.has_more,
+      page: raw.page ?? page,
+      itemsPerPage: raw.items_per_page ?? itemsPerPage,
+    };
   },
 };

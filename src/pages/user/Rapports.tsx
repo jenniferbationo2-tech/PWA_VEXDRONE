@@ -7,6 +7,7 @@ import type { Report } from "@/lib/api/types";
 import { ReportDetailModal } from "@/components/user/reports/ReportDetailModal";
 import { Input } from "@/components/ui/input";
 import { partitionReports } from "@/lib/reportArchive";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 const TABS = [
   { value: "recentes", label: "Missions terminées" },
@@ -114,9 +115,7 @@ export function Rapports() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-brand-gray shadow-card">
-          Chargement des rapports…
-        </div>
+        <TableSkeleton columns={4} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card">
           <p className="font-semibold text-brand-blue-dark">Impossible de charger les rapports</p>

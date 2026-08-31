@@ -82,7 +82,7 @@ export function Login() {
               id="username"
               type="text"
               autoComplete="username"
-              placeholder="mounira"
+              placeholder="vexdrone@email.com"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               className="h-11 w-full rounded-sm border border-white/10 bg-white/[0.06] px-3 text-[14px] text-white placeholder:text-white/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/50"

@@ -11,6 +11,7 @@ import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { cn } from "@/lib/utils";
 import { NewMissionModal } from "@/components/user/missions/NewMissionModal";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "toutes", label: "Toutes" },
@@ -23,6 +24,7 @@ const STATUS_BADGE = {
   en_attente: { variant: "pending", label: "En attente" },
   en_cours: { variant: "active", label: "En cours" },
   terminee: { variant: "neutral", label: "Terminée" },
+  annulee: { variant: "neutral", label: "Annulée" },
 } as const;
 
 function formatDateRange(dateDebut: string, dateFin: string) {
@@ -179,7 +181,7 @@ export function Missions() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-40 items-center justify-center text-brand-gray">Chargement des missions…</div>
+        <TableSkeleton columns={6} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center text-center">
           <p className="font-semibold text-brand-blue-dark">Impossible de charger les missions</p>

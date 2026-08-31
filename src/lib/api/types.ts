@@ -10,7 +10,7 @@
 
 export type Severity = "eleve" | "moyen" | "faible";
 export type AnomalyStatus = "non_traitee" | "traitee";
-export type MissionStatus = "en_attente" | "en_cours" | "terminee";
+export type MissionStatus = "en_attente" | "en_cours" | "terminee" | "annulee";
 export type FlightStatus = "en_attente" | "en_cours" | "terminee";
 export type CaptureDevice = "appareil_photo" | "drone";
 export type DroneStatus = "disponible" | "en_vol" | "maintenance" | "hors_service";
@@ -20,6 +20,13 @@ export interface Drone {
   identifiant: string;
   modele: string;
   status: DroneStatus;
+}
+
+// Payload d'ajout d'un drone à la flotte — statut fixé à "disponible" par
+// défaut côté API, pas besoin de le proposer à la création.
+export interface NewDroneInput {
+  identifiant: string;
+  modele?: string;
 }
 
 export type EntrepriseStatus = "active" | "bloquee";
@@ -32,8 +39,9 @@ export interface Entreprise {
   createdAt: string;
 }
 
-// Compte tel que renvoyé par GET /users/ (superadmin) — pas le profil
-// courant (voir User dans AuthContext.tsx, forme différente).
+// Compte tel que renvoyé par GET /users/ (superadmin) ou GET /users/team
+// (admin) — pas le profil courant (voir User dans AuthContext.tsx, forme
+// différente).
 export interface PlatformUser {
   id: string;
   name: string;
@@ -41,6 +49,7 @@ export interface PlatformUser {
   email: string;
   role: PlatformRole;
   entrepriseId?: string;
+  isDeleted: boolean;
 }
 
 // Payload pour créer un ADMIN d'entreprise (POST /users/, role forcé côté
@@ -52,6 +61,16 @@ export interface NewAdminInput {
   email: string;
   password: string;
   entrepriseId: string;
+}
+
+// Payload de création d'un technicien via POST /users/team — l'entreprise et
+// le rôle sont forcés côté serveur à partir du compte Admin appelant, jamais
+// dans le corps de la requête.
+export interface NewTeamMemberInput {
+  name: string;
+  username: string;
+  email: string;
+  password: string;
 }
 
 export interface Anomaly {
@@ -82,10 +101,26 @@ export interface Mission {
   // le PATCH côté API) — voir NewMissionModal.
   appareil: CaptureDevice;
   droneId?: string;
+  // Id (numérique côté API, string ici — même convention que PlatformUser.id)
+  // du technicien propriétaire. Absent des payloads de création : la mission
+  // appartient toujours à l'appelant, jamais choisi explicitement.
+  userId?: string;
 }
 
 // Payload envoyé à la création — l'id et le status sont calculés/attribués ailleurs
-export type NewMissionInput = Omit<Mission, "id">;
+export type NewMissionInput = Omit<Mission, "id" | "userId">;
+
+// Forme générique des listes paginées de l'API (voir PaginatedListResponse[T]
+// côté OpenAPI) — utilisé là où la pagination est réellement exploitée
+// (GET /missions/entreprise), contrairement au reste du POC qui charge tout
+// d'un coup avec un items_per_page large.
+export interface Paginated<T> {
+  data: T[];
+  totalCount: number;
+  hasMore: boolean;
+  page: number;
+  itemsPerPage: number;
+}
 
 export interface Flight {
   id: string;

@@ -13,9 +13,18 @@ export const mockEntreprises: Entreprise[] = [
 ];
 
 export const mockPlatformUsers: PlatformUser[] = [
-  { id: "u-1", name: "Gérant Sonabel", username: "gerantsonabel", email: "gerant@sonabel.bf", role: "admin", entrepriseId: "e-1" },
-  { id: "u-2", name: "Demo User", username: "demouser", email: "demo.user@sonabel.bf", role: "technicien", entrepriseId: "e-1" },
-  { id: "u-3", name: "Gérant Faso Energie", username: "gerantfaso", email: "gerant@fasoenergie.bf", role: "admin", entrepriseId: "e-2" },
+  { id: "u-1", name: "Gérant Sonabel", username: "gerantsonabel", email: "gerant@sonabel.bf", role: "admin", entrepriseId: "e-1", isDeleted: false },
+  { id: "u-2", name: "Demo User", username: "demouser", email: "demo.user@sonabel.bf", role: "technicien", entrepriseId: "e-1", isDeleted: false },
+  { id: "u-3", name: "Gérant Faso Energie", username: "gerantfaso", email: "gerant@fasoenergie.bf", role: "admin", entrepriseId: "e-2", isDeleted: false },
+];
+
+// Équipe de l'Admin connecté (GET/POST/DELETE /users/team) — distinct de
+// mockPlatformUsers (portée SuperAdmin, cross-entreprise) : ici on simule
+// uniquement "mon" entreprise, comme le fait l'API réelle pour un ADMIN.
+export const mockTeamMembers: PlatformUser[] = [
+  { id: "u-2", name: "Demo User", username: "demouser", email: "demo.user@sonabel.bf", role: "technicien", entrepriseId: "e-1", isDeleted: false },
+  { id: "u-10", name: "Awa Compaoré", username: "awacompaore", email: "awa.compaore@sonabel.bf", role: "technicien", entrepriseId: "e-1", isDeleted: false },
+  { id: "u-11", name: "Boureima Sawadogo", username: "boureimasawadogo", email: "boureima.sawadogo@sonabel.bf", role: "technicien", entrepriseId: "e-1", isDeleted: false },
 ];
 
 
@@ -81,6 +90,7 @@ export const mockMissions: Mission[] = [
     status: "terminee",
     appareil: "drone",
     droneId: "d-1",
+    userId: "u-2",
   },
   {
     id: "m-2",
@@ -92,6 +102,7 @@ export const mockMissions: Mission[] = [
     status: "en_cours",
     appareil: "drone",
     droneId: "d-2",
+    userId: "u-2",
   },
   {
     id: "m-3",
@@ -102,6 +113,7 @@ export const mockMissions: Mission[] = [
     description: "Contrôle annuel de l'ouvrage et des abords",
     status: "en_attente",
     appareil: "appareil_photo",
+    userId: "u-10",
   },
   {
     id: "m-4",
@@ -112,6 +124,19 @@ export const mockMissions: Mission[] = [
     description: "Vérification des pales et du mât",
     status: "terminee",
     appareil: "appareil_photo",
+    userId: "u-11",
+  },
+  {
+    id: "m-5",
+    name: "Poste Zagtouli",
+    zone: "Zone E",
+    dateDebut: "2026-08-05",
+    dateFin: "2026-08-06",
+    description: "Inspection annulée suite à indisponibilité du site",
+    status: "annulee",
+    appareil: "drone",
+    droneId: "d-3",
+    userId: "u-11",
   },
 ];
 

@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
+import { Skeleton } from "@/components/ui/Skeleton";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -83,7 +84,51 @@ export function Vols() {
   });
 
   if (isLoading && !hasLoadedOnce.current) {
-    return <div className="flex h-[50vh] items-center justify-center text-brand-gray">Chargement du vol…</div>;
+    return (
+      <div>
+        <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <Skeleton className="h-6 w-32" />
+            <Skeleton className="mt-2 h-4 w-48" />
+          </div>
+          <Skeleton className="h-7 w-40 rounded-full" />
+        </div>
+
+        <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+          <div className="mb-6 flex items-center gap-2">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex flex-1 items-center last:flex-none">
+                <Skeleton className="h-3 w-3 rounded-full" />
+                {i < 2 && <Skeleton className="mx-2 h-px flex-1" />}
+              </div>
+            ))}
+          </div>
+          <div className="grid grid-cols-3 divide-x divide-brand-blue/[0.06] text-center">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex flex-col items-center gap-2">
+                <Skeleton className="h-3 w-16" />
+                <Skeleton className="h-7 w-12" />
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
+          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card lg:col-span-2">
+            <Skeleton className="mb-4 h-4 w-40" />
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <Skeleton key={i} className="aspect-square w-full rounded-md" />
+              ))}
+            </div>
+          </div>
+          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+            <Skeleton className="mb-4 h-4 w-28" />
+            <Skeleton className="h-[180px] w-full rounded-md" />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (isError || !flight) {

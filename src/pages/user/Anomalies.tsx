@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { MediaAnalysisCard } from "@/components/user/anomalies/MediaAnalysisCard";
 import { cn, formatRelativeTime } from "@/lib/utils";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 const FILTERS: { value: AnomalyStatus | "toutes"; label: string }[] = [
   { value: "toutes", label: "Toutes" },
@@ -87,9 +88,7 @@ export function Anomalies() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="lg:col-span-3">
           {isLoading ? (
-            <div className="flex h-40 items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-brand-gray shadow-card">
-              Chargement…
-            </div>
+            <TableSkeleton columns={5} />
           ) : isError ? (
             <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card">
               <p className="font-semibold text-brand-blue-dark">Impossible de charger les anomalies</p>

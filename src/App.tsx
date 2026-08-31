@@ -14,6 +14,7 @@ import { Vols } from "@/pages/user/Vols";
 import { Rapports } from "@/pages/user/Rapports";
 import { AdminDashboard } from "@/pages/admin/Dashboard";
 import { AdminTechniciens } from "@/pages/admin/Techniciens";
+import { AdminMissions } from "@/pages/admin/Missions";
 import { SuperAdminDashboard } from "@/pages/super-admin/Dashboard";
 import { SuperAdminEntreprises } from "@/pages/super-admin/Entreprises";
 import { Login } from "@/pages/Login";
@@ -55,6 +56,7 @@ export function App() {
                   <Route element={<RoleRoute allow={["admin"]} />}>
                     <Route path="/admin" element={<AdminDashboard />} />
                     <Route path="/admin/techniciens" element={<AdminTechniciens />} />
+                    <Route path="/admin/missions" element={<AdminMissions />} />
                   </Route>
 
                   {/* SuperAdmin */}

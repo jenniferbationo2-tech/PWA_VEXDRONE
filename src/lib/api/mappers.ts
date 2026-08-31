@@ -55,7 +55,7 @@ export function toMissionStatus(statut: BackendMission["statut"]): MissionStatus
     case "terminee":
       return "terminee";
     case "annulee":
-      return "en_attente"; // TODO: ajouter un statut "annulee" cote frontend si besoin
+      return "annulee";
   }
 }
 
@@ -67,6 +67,8 @@ export function toBackendMissionStatus(status: MissionStatus): BackendMission["s
       return "en_cours";
     case "terminee":
       return "terminee";
+    case "annulee":
+      return "annulee";
   }
 }
 
@@ -81,6 +83,7 @@ export function toMission(raw: BackendMission): Mission {
     status: toMissionStatus(raw.statut),
     appareil: raw.appareil,
     droneId: raw.drone_uuid ?? undefined,
+    userId: String(raw.user_id),
   };
 }
 
@@ -116,6 +119,7 @@ export function toPlatformUser(raw: BackendPlatformUser): PlatformUser {
     email: raw.email,
     role: PLATFORM_ROLE_MAP[raw.role],
     entrepriseId: raw.entreprise_id ?? undefined,
+    isDeleted: raw.is_deleted,
   };
 }
 

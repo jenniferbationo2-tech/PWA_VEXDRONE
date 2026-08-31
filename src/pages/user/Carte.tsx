@@ -7,6 +7,8 @@ import { api } from "@/lib/api/client";
 import type { Anomaly, Severity } from "@/lib/api/types";
 import { Badge } from "@/components/ui/badge";
 import { formatRelativeTime } from "@/lib/utils";
+import { Skeleton } from "@/components/ui/Skeleton";
+import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
 const SEVERITY_COLOR: Record<Severity, string> = {
   eleve: "#E37222",
@@ -79,9 +81,12 @@ export function Carte() {
       </div>
 
       {isLoading ? (
-        <div className="flex h-[420px] items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-brand-gray shadow-card">
-          Chargement de la carte…
-        </div>
+        <>
+          <Skeleton className="h-[420px] w-full rounded-lg" />
+          <div className="mt-5">
+            <TableSkeleton columns={6} />
+          </div>
+        </>
       ) : isError || !anomalies ? (
         <div className="flex h-[420px] flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card">
           <p className="font-semibold text-brand-blue-dark">Impossible de charger les anomalies</p>

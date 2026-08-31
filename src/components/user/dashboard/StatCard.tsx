@@ -20,7 +20,7 @@ export function StatCard({ label, value, delta, helper, icon: Icon }: StatCardPr
         <span className="text-[12px] font-medium text-brand-gray">{label}</span>
         {Icon && <Icon size={14} className="text-brand-blue/30" strokeWidth={1.75} />}
       </div>
-      <div className="mt-1.5 font-display text-[26px] font-bold leading-none text-brand-blue-dark">
+      <div className="mt-1.5 font-display text-[26px] font-bold leading-none text-brand-blue-dark dark:text-white">
         {value}
       </div>
       <div className="mt-2 flex items-center gap-1.5 text-[12px]">

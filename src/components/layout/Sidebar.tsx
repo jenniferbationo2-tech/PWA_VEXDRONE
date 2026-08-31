@@ -34,6 +34,7 @@ const NAV_ITEMS: Record<Role, NavItem[]> = {
   admin: [
     { to: "/admin", label: "Dashboard", icon: LayoutGrid },
     { to: "/admin/techniciens", label: "Techniciens", icon: Users },
+    { to: "/admin/missions", label: "Missions", icon: ClipboardList },
   ],
   super_admin: [
     { to: "/super-admin", label: "Dashboard", icon: LayoutGrid },
