@@ -1,8 +1,6 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { MapContainer, TileLayer, Marker } from "react-leaflet";
-import L from "leaflet";
-import { Square, Wifi, WifiOff } from "lucide-react";
+import { Square, Video, VideoOff, Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -10,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -17,21 +16,16 @@ const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "terminee", label: "Terminée" },
 ];
 
-const droneMarkerIcon = L.divIcon({
-  className: "",
-  html: `<div style="
-    width:16px;height:16px;border-radius:9999px;
-    background:#1B365D;border:2.5px solid white;
-    box-shadow:0 1px 4px rgba(27,54,93,0.4);
-  "></div>`,
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
-});
-
 export function Vols() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const { isCapturing, error: captureError, stream } = usePhoneCapture();
+  const liveVideoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    if (liveVideoRef.current) liveVideoRef.current.srcObject = stream;
+  }, [stream]);
 
   const { data: flight, isLoading, isFetching, isError } = useQuery({
     queryKey: ["active-flight"],
@@ -255,19 +249,31 @@ export function Vols() {
         </div>
 
         <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
-          <h3 className="mb-4">{isPhoneMission ? "Position" : "Position du drone"}</h3>
+          <h3 className="mb-4">{isPhoneMission ? "Vue caméra en direct" : "Vidéo drone"}</h3>
           <div className="overflow-hidden rounded-md">
-            <MapContainer
-              center={[flight.gps.lat, flight.gps.lng]}
-              zoom={15}
-              zoomControl={false}
-              dragging={false}
-              scrollWheelZoom={false}
-              style={{ height: 180, width: "100%" }}
-            >
-              <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-              <Marker position={[flight.gps.lat, flight.gps.lng]} icon={droneMarkerIcon} />
-            </MapContainer>
+            {isPhoneMission ? (
+              isCapturing && stream ? (
+                <video
+                  ref={liveVideoRef}
+                  autoPlay
+                  muted
+                  playsInline
+                  className="h-[180px] w-full bg-black object-cover"
+                />
+              ) : (
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center">
+                  <VideoOff size={22} className="text-brand-gray/60" strokeWidth={1.5} />
+                  <p className="px-4 text-[12px] text-brand-gray">
+                    {captureError ?? "Connexion à la caméra…"}
+                  </p>
+                </div>
+              )
+            ) : (
+              <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-brand-blue/20 text-center">
+                <Video size={22} className="text-brand-blue/40" strokeWidth={1.5} />
+                <p className="text-[12px] font-medium text-brand-gray">Vidéo drone à venir</p>
+              </div>
+            )}
           </div>
           <p className="mt-3 text-center text-[13px] text-brand-gray">
             {flight.gps.lat.toFixed(4)}°N, {flight.gps.lng.toFixed(4)}°O

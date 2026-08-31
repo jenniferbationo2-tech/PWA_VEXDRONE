@@ -12,9 +12,17 @@ const JPEG_QUALITY = 0.8;
 interface PhoneCaptureContextType {
   isCapturing: boolean;
   error: string | null;
+  // Même MediaStream que le <video> caché ci-dessous, exposé pour qu'un écran
+  // (Vols.tsx) puisse l'afficher en direct — un MediaStream peut être attaché
+  // à plusieurs éléments <video> sans conflit.
+  stream: MediaStream | null;
 }
 
-const PhoneCaptureContext = createContext<PhoneCaptureContextType>({ isCapturing: false, error: null });
+const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
+  isCapturing: false,
+  error: null,
+  stream: null,
+});
 
 export function usePhoneCapture() {
   return useContext(PhoneCaptureContext);
@@ -63,6 +71,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const { addNotification } = useNotifications();
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -128,18 +137,19 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   async function start(missionId: string, flightId: string, startingCount: number) {
     setError(null);
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
-      streamRef.current = stream;
+      streamRef.current = mediaStream;
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
+        videoRef.current.srcObject = mediaStream;
         await videoRef.current.play();
       }
       activeFlightIdRef.current = flightId;
       imagesCapturedRef.current = startingCount;
       setIsCapturing(true);
+      setStream(mediaStream);
       addNotification({
         title: "Capture en direct démarrée",
         message: "Le téléphone capture et analyse en continu, même si tu changes d'écran.",
@@ -162,6 +172,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
     setIsCapturing(false);
+    setStream(null);
   }
 
   useEffect(() => {
@@ -185,7 +196,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   useEffect(() => stop, []);
 
   return (
-    <PhoneCaptureContext.Provider value={{ isCapturing, error }}>
+    <PhoneCaptureContext.Provider value={{ isCapturing, error, stream }}>
       {children}
       <video ref={videoRef} className="hidden" muted playsInline />
     </PhoneCaptureContext.Provider>
