@@ -177,9 +177,37 @@ export function Anomalies() {
         <div className="lg:col-span-2">
           {selected ? (
             <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-5 shadow-card">
-              <div className="relative mb-4 flex h-[220px] items-center justify-center rounded-sm bg-brand-off-white">
-                <div className="h-16 w-20 rounded border-2 border-brand-orange" />
-                <span className="absolute bottom-3 text-[12px] text-brand-gray">Image annotée (drone)</span>
+              <div className="mb-4 overflow-hidden rounded-sm bg-brand-off-white">
+                {selected.imageUrl ? (
+                  // Le cadre est positionne en % du conteneur : celui-ci doit
+                  // epouser exactement les dimensions rendues de l'image (pas
+                  // de object-contain/hauteur fixe), sinon un eventuel
+                  // letterboxing decale le cadre par rapport a la vraie zone
+                  // detectee.
+                  <div className="relative">
+                    <img
+                      src={selected.imageUrl}
+                      alt={`Photo — ${selected.type}`}
+                      className="block w-full"
+                    />
+                    {selected.bbox && (
+                      <div
+                        className="absolute border-2 border-brand-orange"
+                        style={{
+                          left: `${selected.bbox.x * 100}%`,
+                          top: `${selected.bbox.y * 100}%`,
+                          width: `${selected.bbox.width * 100}%`,
+                          height: `${selected.bbox.height * 100}%`,
+                        }}
+                      />
+                    )}
+                  </div>
+                ) : (
+                  <div className="relative flex h-[220px] items-center justify-center">
+                    <div className="h-16 w-20 rounded border-2 border-brand-orange" />
+                    <span className="absolute bottom-3 text-[12px] text-brand-gray">Image indisponible</span>
+                  </div>
+                )}
               </div>
 
               <div className="mb-1 flex items-center justify-between">

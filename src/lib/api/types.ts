@@ -65,6 +65,9 @@ export interface Anomaly {
   gps: { lat: number; lng: number };
   missionId: string;
   imageUrl?: string;
+  // Normalisee 0-1 (fraction de la largeur/hauteur de l'image), telle que
+  // renvoyee par le modele IA — voir bbox_x/y/largeur/hauteur cote backend.
+  bbox?: { x: number; y: number; width: number; height: number };
 }
 
 export interface Mission {

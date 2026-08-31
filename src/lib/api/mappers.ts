@@ -126,7 +126,11 @@ export function toAnomaly(raw: BackendAnomaly, image?: BackendImage): Anomaly {
     id: raw.uuid,
     type: toAnomalyTypeLabel(raw.type_anomalie),
     zone: "", // TODO: a deriver de la mission via l'image, pas encore cablé
-    confidence: raw.confiance,
+    // Le backend renvoie une fraction (0.0-1.0, cf. schema Pydantic
+    // confiance: ge=0.0 le=1.0) ; l'UI affiche "{confidence}%" partout
+    // (Anomalies.tsx, Carte.tsx) — invisible tant que le moteur IA ne
+    // renvoyait aucune vraie detection (fixtures de test a 0 detection).
+    confidence: Math.round(raw.confiance * 100),
     severity: toSeverity(raw.gravite),
     status: raw.validee_par_humain ? "traitee" : "non_traitee",
     detectedAt: raw.created_at,
@@ -136,6 +140,7 @@ export function toAnomaly(raw: BackendAnomaly, image?: BackendImage): Anomaly {
     },
     missionId: image?.mission_uuid ?? "",
     imageUrl: image ? `/api/v1/images/${image.uuid}/fichier` : undefined,
+    bbox: { x: raw.bbox_x, y: raw.bbox_y, width: raw.bbox_largeur, height: raw.bbox_hauteur },
   };
 }
 
