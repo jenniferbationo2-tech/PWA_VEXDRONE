@@ -122,6 +122,7 @@ export interface BackendImage {
   longitude: number | null;
   date_capture: string | null;
   statut_analyse: string;
+  created_at: string;
 }
 
 // Flux d'import manuel uniquement (fichier video deja enregistre) — sans

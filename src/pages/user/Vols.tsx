@@ -52,6 +52,15 @@ export function Vols() {
   const activeMission = flight ? missions?.find((m) => m.id === flight.missionId) : undefined;
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
 
+  // Reinterroge au meme rythme que le vol : de nouvelles photos arrivent en
+  // continu pendant la capture live (PhoneCaptureContext.tsx, ~3s/photo).
+  const { data: missionImages } = useQuery({
+    queryKey: ["mission-images", flight?.missionId],
+    queryFn: () => api.getMissionImages(flight!.missionId),
+    enabled: !!flight,
+    refetchInterval: 4000,
+  });
+
   const endMutation = useMutation({
     mutationFn: async () => {
       if (!flight) return;
@@ -236,16 +245,22 @@ export function Vols() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
           <h3 className="mb-4">Images captées en direct</h3>
-          <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-            {Array.from({ length: Math.min(8, flight.imagesCaptured) }).map((_, i) => (
-              <div
-                key={i}
-                className="flex aspect-square items-center justify-center rounded-md bg-brand-off-white text-[11px] text-brand-gray"
-              >
-                photo
-              </div>
-            ))}
-          </div>
+          {missionImages && missionImages.length > 0 ? (
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+              {missionImages.map((img) => (
+                <img
+                  key={img.id}
+                  src={img.url}
+                  alt="Photo capturée pendant le vol"
+                  className="aspect-square w-full rounded-md object-cover"
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="flex h-24 items-center justify-center rounded-md bg-brand-off-white text-[13px] text-brand-gray">
+              {flight.imagesCaptured > 0 ? "Chargement des photos…" : "Aucune photo pour l'instant"}
+            </div>
+          )}
         </div>
 
         <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">

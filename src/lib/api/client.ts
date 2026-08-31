@@ -490,6 +490,31 @@ export const api = {
     throw new Error("Aucun vol actif pour les missions en cours");
   },
 
+  // Les plus recentes d'abord — /images/ ne garantit pas d'ordre explicite,
+  // tri fait cote client sur created_at (le seul champ fiable pour ca,
+  // date_capture peut manquer si pas d'EXIF). Utilise par Vols.tsx pour la
+  // grille "Images captees en direct", qui affichait jusqu'ici des cases
+  // vides plutot que les vraies photos.
+  getMissionImages: async (missionId: string, limit = 8): Promise<{ id: string; url: string }[]> => {
+    if (USE_MOCKS) {
+      return delay(
+        Array.from({ length: Math.min(limit, mockFlight.imagesCaptured) }).map((_, i) => ({
+          id: `mock-img-${i}`,
+          url: "",
+        })),
+        150
+      );
+    }
+    const raw = await apiFetch<{ data: BackendImage[] }>(
+      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=20`
+    );
+    return raw.data
+      .slice()
+      .sort((a, b) => b.created_at.localeCompare(a.created_at))
+      .slice(0, limit)
+      .map((img) => ({ id: img.uuid, url: `/api/v1/images/${img.uuid}/fichier` }));
+  },
+
   // POST /vols/ passe directement le vol en "en_cours" — même moment que le
   // clic sur "Lancer" une mission (drone ou téléphone, les deux ont un Vol).
   startFlight: async (missionId: string): Promise<Flight> => {
