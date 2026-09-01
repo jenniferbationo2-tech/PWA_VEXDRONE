@@ -1,3 +1,4 @@
+import { lazy } from "react";
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { AuthProvider, useAuth } from "@/lib/Auth/AuthContext";
 import { ThemeProvider } from "@/lib/theme/ThemeContext";
@@ -6,19 +7,27 @@ import { ProtectedRoute } from "@/lib/Auth/ProtectedRoute";
 import { RoleRoute } from "@/lib/Auth/RoleRoute";
 import { roleHome } from "@/lib/Auth/roles";
 import { AppShell } from "@/components/layout/AppShell";
-import { Dashboard } from "@/pages/user/Dashboard";
-import { Missions } from "@/pages/user/Missions";
-import { Anomalies } from "@/pages/user/Anomalies";
-import { Carte } from "@/pages/user/Carte";
-import { Vols } from "@/pages/user/Vols";
-import { Rapports } from "@/pages/user/Rapports";
-import { AdminDashboard } from "@/pages/admin/Dashboard";
-import { AdminTechniciens } from "@/pages/admin/Techniciens";
-import { AdminMissions } from "@/pages/admin/Missions";
-import { SuperAdminDashboard } from "@/pages/super-admin/Dashboard";
-import { SuperAdminEntreprises } from "@/pages/super-admin/Entreprises";
 import { Login } from "@/pages/Login";
-import { Parametres } from "@/pages/Parametre";
+
+// Un chunk par écran (chargé à la navigation, pas au démarrage) plutôt qu'un
+// seul bundle de ~940 Ko : Leaflet (Carte) et le module médias/IA (Anomalies)
+// sont les plus lourds à sortir du chargement initial.
+const Dashboard = lazy(() => import("@/pages/user/Dashboard").then((m) => ({ default: m.Dashboard })));
+const Missions = lazy(() => import("@/pages/user/Missions").then((m) => ({ default: m.Missions })));
+const Anomalies = lazy(() => import("@/pages/user/Anomalies").then((m) => ({ default: m.Anomalies })));
+const Carte = lazy(() => import("@/pages/user/Carte").then((m) => ({ default: m.Carte })));
+const Vols = lazy(() => import("@/pages/user/Vols").then((m) => ({ default: m.Vols })));
+const Rapports = lazy(() => import("@/pages/user/Rapports").then((m) => ({ default: m.Rapports })));
+const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard").then((m) => ({ default: m.AdminDashboard })));
+const AdminTechniciens = lazy(() => import("@/pages/admin/Techniciens").then((m) => ({ default: m.AdminTechniciens })));
+const AdminMissions = lazy(() => import("@/pages/admin/Missions").then((m) => ({ default: m.AdminMissions })));
+const SuperAdminDashboard = lazy(() =>
+  import("@/pages/super-admin/Dashboard").then((m) => ({ default: m.SuperAdminDashboard }))
+);
+const SuperAdminEntreprises = lazy(() =>
+  import("@/pages/super-admin/Entreprises").then((m) => ({ default: m.SuperAdminEntreprises }))
+);
+const Parametres = lazy(() => import("@/pages/Parametre").then((m) => ({ default: m.Parametres })));
 
 // Chemin inconnu (ou racine "/" pour un admin/superAdmin — leur "/" est
 // réservé au technicien, voir RoleRoute) : on renvoie vers l'accueil propre

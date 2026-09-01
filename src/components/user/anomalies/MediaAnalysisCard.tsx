@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   UploadCloud,
@@ -23,7 +23,10 @@ export function MediaAnalysisCard() {
   const [files, setFiles] = useState<File[]>([]);
   const [selectionWarning, setSelectionWarning] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
-  const [missionId, setMissionId] = useState("");
+  // Présélectionnée quand on arrive depuis "Importer maintenant" sur Vols.tsx
+  // (mission en mode upload) — évite d'avoir à la retrouver dans la liste.
+  const location = useLocation();
+  const [missionId, setMissionId] = useState(() => (location.state as { missionId?: string } | null)?.missionId ?? "");
 
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();

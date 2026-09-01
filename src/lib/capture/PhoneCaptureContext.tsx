@@ -2,12 +2,16 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
+import { getCaptureMode } from "@/lib/captureMode";
 
 // Cadence de capture : alignée sur celle de l'extraction de frames vidéo côté
 // backend (1 image / 2s), avec un peu de marge pour laisser le temps à
 // l'upload + l'analyse de la capture précédente de se terminer.
 const CAPTURE_INTERVAL_MS = 3000;
 const JPEG_QUALITY = 0.8;
+// Au-delà de ce nombre d'échecs d'affilée, on considère que la capture ne
+// remonte plus rien (pas juste un raté isolé) et on alerte le technicien.
+const FAILURE_ALERT_THRESHOLD = 3;
 
 interface PhoneCaptureContextType {
   isCapturing: boolean;
@@ -16,12 +20,19 @@ interface PhoneCaptureContextType {
   // (Vols.tsx) puisse l'afficher en direct — un MediaStream peut être attaché
   // à plusieurs éléments <video> sans conflit.
   stream: MediaStream | null;
+  // Horodatage de la dernière capture uploadée avec succès — permet à
+  // Vols.tsx d'afficher "dernière capture il y a Xs" plutôt que de laisser un
+  // échec silencieux passer inaperçu jusqu'à la fin du vol.
+  lastCaptureAt: number | null;
+  consecutiveFailures: number;
 }
 
 const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
   isCapturing: false,
   error: null,
   stream: null,
+  lastCaptureAt: null,
+  consecutiveFailures: 0,
 });
 
 export function usePhoneCapture() {
@@ -72,12 +83,17 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const [isCapturing, setIsCapturing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [stream, setStream] = useState<MediaStream | null>(null);
+  const [lastCaptureAt, setLastCaptureAt] = useState<number | null>(null);
+  const [consecutiveFailures, setConsecutiveFailures] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlightIdRef = useRef<string | null>(null);
   const imagesCapturedRef = useRef(0);
+  // Garde-fou pour n'envoyer l'alerte qu'une fois par série d'échecs, pas à
+  // chaque nouvel échec au-delà du seuil.
+  const alertedRef = useRef(false);
 
   // Mêmes clés/options que Vols.tsx : React Query dédupe la requête entre les
   // deux composants, pas de double polling quand on est sur cette page.
@@ -121,9 +137,23 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         battery,
         connection: getConnectionType(),
       });
+      setLastCaptureAt(Date.now());
+      setConsecutiveFailures(0);
+      alertedRef.current = false;
     } catch (err) {
       // Une capture ratée (réseau...) ne doit pas arrêter la boucle — la suivante réessaiera.
       console.error("Échec d'une capture en direct", err);
+      setConsecutiveFailures((n) => {
+        const next = n + 1;
+        if (next >= FAILURE_ALERT_THRESHOLD && !alertedRef.current) {
+          alertedRef.current = true;
+          addNotification({
+            title: "Capture en direct interrompue",
+            message: `${next} captures ont échoué d'affilée — vérifie la connexion du téléphone.`,
+          });
+        }
+        return next;
+      });
     }
   }
 
@@ -136,6 +166,9 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
   async function start(missionId: string, flightId: string, startingCount: number) {
     setError(null);
+    setLastCaptureAt(null);
+    setConsecutiveFailures(0);
+    alertedRef.current = false;
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
@@ -182,7 +215,11 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     }
 
     const mission = missions.find((m) => m.id === flight.missionId);
-    const shouldCapture = mission?.appareil === "appareil_photo" && flight.status === "en_cours";
+    // Pas de mode enregistré (mission lancée avant ce choix, ou stockage
+    // indisponible) : on retombe sur l'ancien comportement, streaming par
+    // défaut pour une mission téléphone.
+    const isUploadMode = mission ? getCaptureMode(mission.id) === "upload" : false;
+    const shouldCapture = mission?.appareil === "appareil_photo" && flight.status === "en_cours" && !isUploadMode;
 
     if (shouldCapture && mission && activeFlightIdRef.current !== flight.id) {
       start(mission.id, flight.id, flight.imagesCaptured);
@@ -196,7 +233,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   useEffect(() => stop, []);
 
   return (
-    <PhoneCaptureContext.Provider value={{ isCapturing, error, stream }}>
+    <PhoneCaptureContext.Provider value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures }}>
       {children}
       <video ref={videoRef} className="hidden" muted playsInline />
     </PhoneCaptureContext.Provider>

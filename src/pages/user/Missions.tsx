@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Search, Plus, Pencil, Trash2, Play, Loader2 } from "lucide-react";
 import { api } from "@/lib/api/client";
-import { getEffectiveStatus } from "@/lib/missionStatus";
+import { getEffectiveStatus, MISSION_STATUS_BADGE, formatMissionDateRange } from "@/lib/missionStatus";
 import type { Mission, MissionStatus, NewMissionInput } from "@/lib/api/types";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -10,8 +10,10 @@ import { IconButton } from "@/components/ui/IconButton";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { cn } from "@/lib/utils";
 import { NewMissionModal } from "@/components/user/missions/NewMissionModal";
+import { LaunchMissionDialog } from "@/components/user/missions/LaunchMissionDialog";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
+import { setCaptureMode, type CaptureMode } from "@/lib/captureMode";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "toutes", label: "Toutes" },
@@ -19,19 +21,6 @@ const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "en_cours", label: "En cours" },
   { value: "terminee", label: "Terminée" },
 ];
-
-const STATUS_BADGE = {
-  en_attente: { variant: "pending", label: "En attente" },
-  en_cours: { variant: "active", label: "En cours" },
-  terminee: { variant: "neutral", label: "Terminée" },
-  annulee: { variant: "neutral", label: "Annulée" },
-} as const;
-
-function formatDateRange(dateDebut: string, dateFin: string) {
-  const d1 = new Date(dateDebut).toLocaleDateString("fr-FR");
-  const d2 = new Date(dateFin).toLocaleDateString("fr-FR");
-  return dateDebut === dateFin ? d1 : `${d1} → ${d2}`;
-}
 
 export function Missions() {
   const queryClient = useQueryClient();
@@ -50,8 +39,13 @@ export function Missions() {
   const [deleteTarget, setDeleteTarget] = useState<Mission | null>(null);
   const [deleting, setDeleting] = useState(false);
 
+  const [launchTarget, setLaunchTarget] = useState<Mission | null>(null);
+
   const launchMutation = useMutation({
-    mutationFn: async (mission: Mission) => {
+    mutationFn: async ({ mission, mode }: { mission: Mission; mode: CaptureMode }) => {
+      // Enregistré avant de démarrer le vol : PhoneCaptureContext lit ce
+      // choix dès qu'il détecte le vol actif, pas d'ordre à garantir côté API.
+      setCaptureMode(mission.id, mode);
       const updated = await api.updateMission(mission.id, {
         name: mission.name,
         zone: mission.zone,
@@ -217,7 +211,7 @@ export function Missions() {
               </thead>
               <tbody>
                 {filtered.map((m: Mission) => {
-                  const isLaunching = launchMutation.isPending && launchMutation.variables?.id === m.id;
+                  const isLaunching = launchMutation.isPending && launchMutation.variables?.mission.id === m.id;
                   const effectiveStatus = getEffectiveStatus(m);
                   return (
                     <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60">
@@ -229,15 +223,15 @@ export function Missions() {
                       </td>
                       <td
                         className="truncate px-3 py-3 text-brand-gray"
-                        title={formatDateRange(m.dateDebut, m.dateFin)}
+                        title={formatMissionDateRange(m.dateDebut, m.dateFin)}
                       >
-                        {formatDateRange(m.dateDebut, m.dateFin)}
+                        {formatMissionDateRange(m.dateDebut, m.dateFin)}
                       </td>
                       <td className="truncate px-3 py-3 text-brand-blue-dark/80" title={m.description}>
                         {m.description}
                       </td>
                       <td className="px-3 py-3">
-                        <Badge variant={STATUS_BADGE[effectiveStatus].variant}>{STATUS_BADGE[effectiveStatus].label}</Badge>
+                        <Badge variant={MISSION_STATUS_BADGE[effectiveStatus].variant}>{MISSION_STATUS_BADGE[effectiveStatus].label}</Badge>
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-0.5">
@@ -250,7 +244,7 @@ export function Missions() {
                               <IconButton
                                 icon={Play}
                                 label="Lancer"
-                                onClick={() => launchMutation.mutate(m)}
+                                onClick={() => setLaunchTarget(m)}
                                 className="hover:bg-status-success/10 hover:text-status-success"
                               />
                             ))}
@@ -286,7 +280,7 @@ export function Missions() {
                       <Badge variant="neutral">{m.zone}</Badge>
                       <p className="mt-1.5 font-semibold text-brand-blue-dark">{m.name}</p>
                     </div>
-                    <Badge variant={STATUS_BADGE[effectiveStatus].variant}>{STATUS_BADGE[effectiveStatus].label}</Badge>
+                    <Badge variant={MISSION_STATUS_BADGE[effectiveStatus].variant}>{MISSION_STATUS_BADGE[effectiveStatus].label}</Badge>
                   </div>
 
                   <p className="mb-3 text-[13px] text-brand-blue-dark/80">{m.description}</p>
@@ -294,19 +288,19 @@ export function Missions() {
                   <div className="mb-3 flex items-center justify-between text-[13px]">
                     <span className="text-brand-gray">Période</span>
                     <span className="font-medium text-brand-blue-dark">
-                      {formatDateRange(m.dateDebut, m.dateFin)}
+                      {formatMissionDateRange(m.dateDebut, m.dateFin)}
                     </span>
                   </div>
 
                   <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3">
                     {effectiveStatus === "en_attente" &&
-                      (launchMutation.isPending && launchMutation.variables?.id === m.id ? (
+                      (launchMutation.isPending && launchMutation.variables?.mission.id === m.id ? (
                         <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray">
                           <Loader2 size={13} className="animate-spin" /> Lancement…
                         </span>
                       ) : (
                         <button
-                          onClick={() => launchMutation.mutate(m)}
+                          onClick={() => setLaunchTarget(m)}
                           className="flex items-center gap-1 text-[13px] font-semibold text-status-success hover:underline"
                         >
                           <Play size={13} /> Lancer
@@ -347,6 +341,18 @@ export function Missions() {
         onConfirm={handleConfirmDelete}
         onCancel={() => setDeleteTarget(null)}
         isLoading={deleting}
+      />
+
+      <LaunchMissionDialog
+        mission={launchTarget}
+        onCancel={() => setLaunchTarget(null)}
+        onLaunch={(mission, mode) => {
+          launchMutation.mutate(
+            { mission, mode },
+            { onSuccess: () => setLaunchTarget(null) }
+          );
+        }}
+        isLaunching={launchMutation.isPending}
       />
     </div>
   );

@@ -7,6 +7,7 @@ import { Pagination } from "@/components/ui/Pagination";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import type { MissionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { MISSION_STATUS_BADGE, formatMissionDateRange } from "@/lib/missionStatus";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "toutes", label: "Toutes" },
@@ -16,20 +17,7 @@ const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "annulee", label: "Annulée" },
 ];
 
-const STATUS_BADGE = {
-  en_attente: { variant: "pending", label: "En attente" },
-  en_cours: { variant: "active", label: "En cours" },
-  terminee: { variant: "neutral", label: "Terminée" },
-  annulee: { variant: "neutral", label: "Annulée" },
-} as const;
-
 const ITEMS_PER_PAGE = 10;
-
-function formatDateRange(dateDebut: string, dateFin: string) {
-  const d1 = new Date(dateDebut).toLocaleDateString("fr-FR");
-  const d2 = new Date(dateFin).toLocaleDateString("fr-FR");
-  return dateDebut === dateFin ? d1 : `${d1} → ${d2}`;
-}
 
 export function AdminMissions() {
   const [filter, setFilter] = useState<MissionStatus | "toutes">("toutes");
@@ -112,10 +100,10 @@ export function AdminMissions() {
                       <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">{mission.zone}</td>
                       <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">{technicienName(mission.userId)}</td>
                       <td className="px-5 py-3.5">
-                        <Badge variant={STATUS_BADGE[mission.status].variant}>{STATUS_BADGE[mission.status].label}</Badge>
+                        <Badge variant={MISSION_STATUS_BADGE[mission.status].variant}>{MISSION_STATUS_BADGE[mission.status].label}</Badge>
                       </td>
                       <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">
-                        {formatDateRange(mission.dateDebut, mission.dateFin)}
+                        {formatMissionDateRange(mission.dateDebut, mission.dateFin)}
                       </td>
                     </tr>
                   ))}
@@ -133,12 +121,12 @@ export function AdminMissions() {
               >
                 <div className="mb-2 flex items-start justify-between gap-2">
                   <p className="font-semibold text-brand-blue-dark dark:text-white">{mission.name}</p>
-                  <Badge variant={STATUS_BADGE[mission.status].variant}>{STATUS_BADGE[mission.status].label}</Badge>
+                  <Badge variant={MISSION_STATUS_BADGE[mission.status].variant}>{MISSION_STATUS_BADGE[mission.status].label}</Badge>
                 </div>
                 <div className="space-y-1 text-[13px] text-brand-gray dark:text-white/60">
                   <p>{mission.zone}</p>
                   <p>{technicienName(mission.userId)}</p>
-                  <p>{formatDateRange(mission.dateDebut, mission.dateFin)}</p>
+                  <p>{formatMissionDateRange(mission.dateDebut, mission.dateFin)}</p>
                 </div>
               </div>
             ))}

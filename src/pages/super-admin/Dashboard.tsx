@@ -1,8 +1,8 @@
 import { Building2, ShieldBan, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { useNavigate } from "react-router-dom";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { DashboardActionCard } from "@/components/dashboard/DashboardActionCard";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { prettifyUsername } from "@/lib/utils";
@@ -54,18 +54,13 @@ export function SuperAdminDashboard() {
       </div>
 
       <div className="mt-6 max-w-md">
-        <Card>
-          <CardHeader>
-            <CardTitle>Entreprises</CardTitle>
-          </CardHeader>
-          <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">
-            Gère les entreprises et leurs comptes admin sur la plateforme.
-          </p>
-          <Button size="sm" className="gap-2" onClick={() => navigate("/super-admin/entreprises")}>
-            <Building2 size={16} strokeWidth={1.75} />
-            Gérer les entreprises
-          </Button>
-        </Card>
+        <DashboardActionCard
+          title="Entreprises"
+          description="Gère les entreprises et leurs comptes admin sur la plateforme."
+          buttonLabel="Gérer les entreprises"
+          buttonIcon={Building2}
+          onAction={() => navigate("/super-admin/entreprises")}
+        />
       </div>
     </div>
   );

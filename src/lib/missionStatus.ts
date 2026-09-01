@@ -27,3 +27,18 @@ export function getEffectiveStatus(mission: Pick<Mission, "status" | "dateFin">)
   if (!isTerminal && hasReachedEndDate(mission.dateFin)) return "terminee";
   return mission.status;
 }
+
+// Mapping badge partagé entre les deux écrans Missions (technicien et admin)
+// — une seule source à corriger si un statut change de libellé ou de couleur.
+export const MISSION_STATUS_BADGE = {
+  en_attente: { variant: "pending", label: "En attente" },
+  en_cours: { variant: "active", label: "En cours" },
+  terminee: { variant: "neutral", label: "Terminée" },
+  annulee: { variant: "neutral", label: "Annulée" },
+} as const;
+
+export function formatMissionDateRange(dateDebut: string, dateFin: string): string {
+  const d1 = new Date(dateDebut).toLocaleDateString("fr-FR");
+  const d2 = new Date(dateFin).toLocaleDateString("fr-FR");
+  return dateDebut === dateFin ? d1 : `${d1} → ${d2}`;
+}

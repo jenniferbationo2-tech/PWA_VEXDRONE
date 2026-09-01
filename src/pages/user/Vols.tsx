@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
+import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Square, Video, VideoOff, Wifi, WifiOff } from "lucide-react";
+import { Square, UploadCloud, Video, VideoOff, Wifi, WifiOff } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -9,6 +10,7 @@ import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
+import { getCaptureMode } from "@/lib/captureMode";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -20,12 +22,21 @@ export function Vols() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const { isCapturing, error: captureError, stream } = usePhoneCapture();
+  const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures } = usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
     if (liveVideoRef.current) liveVideoRef.current.srcObject = stream;
   }, [stream]);
+
+  // Fait vivre le "il y a Xs" sous le compteur d'images sans dépendre du
+  // polling du vol (toutes les 4s, trop lent pour ce repère).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isCapturing) return;
+    const id = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [isCapturing]);
 
   const { data: flight, isLoading, isFetching, isError } = useQuery({
     queryKey: ["active-flight"],
@@ -51,6 +62,7 @@ export function Vols() {
 
   const activeMission = flight ? missions?.find((m) => m.id === flight.missionId) : undefined;
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
+  const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "upload" : false;
 
   // Reinterroge au meme rythme que le vol : de nouvelles photos arrivent en
   // continu pendant la capture live (PhoneCaptureContext.tsx, ~3s/photo).
@@ -60,6 +72,19 @@ export function Vols() {
     enabled: !!flight,
     refetchInterval: 4000,
   });
+
+  // Meme cle que Anomalies.tsx/Carte.tsx : dedupe la requete si ces pages
+  // sont deja montees. Pas de filtre par mission cote API (voir client.ts),
+  // donc on filtre cote client comme le reste du module anomalies.
+  const { data: anomalies } = useQuery({
+    queryKey: ["anomalies"],
+    queryFn: api.getAnomalies,
+    enabled: !!flight,
+    refetchInterval: 4000,
+  });
+  const anomaliesCount = flight
+    ? anomalies?.filter((a) => a.missionId === flight.missionId).length ?? 0
+    : 0;
 
   const endMutation = useMutation({
     mutationFn: async () => {
@@ -213,7 +238,7 @@ export function Vols() {
         <div
           className={cn(
             "grid divide-x divide-brand-blue/[0.06] text-center",
-            isPhoneMission ? "grid-cols-2" : "grid-cols-3"
+            isPhoneMission ? "grid-cols-3" : "grid-cols-4"
           )}
         >
           {!isPhoneMission && (
@@ -237,6 +262,28 @@ export function Vols() {
             <div className="text-[13px] text-brand-gray">Images</div>
             <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">
               {flight.imagesCaptured}
+            </div>
+            {isPhoneMission && (
+              <div className={cn("mt-1 text-[12px] font-medium", consecutiveFailures >= 3 ? "text-brand-orange" : "text-brand-gray")}>
+                {consecutiveFailures >= 3
+                  ? `${consecutiveFailures} échecs de capture d'affilée`
+                  : lastCaptureAt
+                    ? `Dernière capture il y a ${Math.max(0, Math.round((now - lastCaptureAt) / 1000))}s`
+                    : isCapturing
+                      ? "En attente de la première capture…"
+                      : null}
+              </div>
+            )}
+          </div>
+          <div>
+            <div className="text-[13px] text-brand-gray">Anomalies</div>
+            <div
+              className={cn(
+                "mt-1 font-display text-[26px] font-bold",
+                anomaliesCount > 0 ? "text-brand-orange" : "text-brand-blue-dark"
+              )}
+            >
+              {anomaliesCount}
             </div>
           </div>
         </div>
@@ -264,10 +311,26 @@ export function Vols() {
         </div>
 
         <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
-          <h3 className="mb-4">{isPhoneMission ? "Vue caméra en direct" : "Vidéo drone"}</h3>
+          <h3 className="mb-4">
+            {isPhoneMission ? (isUploadMode ? "Import manuel" : "Vue caméra en direct") : "Vidéo drone"}
+          </h3>
           <div className="overflow-hidden rounded-md">
             {isPhoneMission ? (
-              isCapturing && stream ? (
+              isUploadMode ? (
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-brand-blue/20 text-center">
+                  <UploadCloud size={22} className="text-brand-blue/50" strokeWidth={1.5} />
+                  <p className="px-4 text-[12px] text-brand-gray">
+                    Mode upload — importe tes photos depuis Anomalies.
+                  </p>
+                  <Link
+                    to="/anomalies"
+                    state={{ missionId: activeMission?.id }}
+                    className="text-[12px] font-semibold text-brand-blue hover:underline"
+                  >
+                    Importer maintenant
+                  </Link>
+                </div>
+              ) : isCapturing && stream ? (
                 <video
                   ref={liveVideoRef}
                   autoPlay

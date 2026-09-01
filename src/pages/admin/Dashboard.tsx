@@ -2,11 +2,10 @@ import { useState } from "react";
 import { CalendarClock, ClipboardList, Plane, Settings2, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { Card, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { StatCard } from "@/components/user/dashboard/StatCard";
 import { StatGridSkeleton } from "@/components/ui/StatGridSkeleton";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
+import { DashboardActionCard } from "@/components/dashboard/DashboardActionCard";
 import { FleetModal } from "@/components/admin/dashboard/FleetModal";
 import { SettingsModal } from "@/components/admin/dashboard/SettingsModal";
 import { api } from "@/lib/api/client";
@@ -62,38 +61,31 @@ export function AdminDashboard() {
         <div className="space-y-4">
           <WeatherCard />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Techniciens</CardTitle>
-            </CardHeader>
-            <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">
-              Inscris et gère les techniciens de ton entreprise sur la plateforme.
-            </p>
-            <Button size="sm" className="gap-2" onClick={() => navigate("/admin/techniciens")}>
-              <Users size={16} strokeWidth={1.75} />
-              Gérer les techniciens
-            </Button>
-          </Card>
+          <DashboardActionCard
+            title="Techniciens"
+            description="Inscris et gère les techniciens de ton entreprise sur la plateforme."
+            buttonLabel="Gérer les techniciens"
+            buttonIcon={Users}
+            onAction={() => navigate("/admin/techniciens")}
+          />
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Missions</CardTitle>
-            </CardHeader>
-            <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">
-              Suis les missions de tous les techniciens de ton entreprise.
-            </p>
-            <Button size="sm" className="gap-2" onClick={() => navigate("/admin/missions")}>
-              <ClipboardList size={16} strokeWidth={1.75} />
-              Voir les missions
-            </Button>
-          </Card>
+          <DashboardActionCard
+            title="Missions"
+            description="Suis les missions de tous les techniciens de ton entreprise."
+            buttonLabel="Voir les missions"
+            buttonIcon={ClipboardList}
+            onAction={() => navigate("/admin/missions")}
+          />
         </div>
 
         <div className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Flotte</CardTitle>
-            </CardHeader>
+          <DashboardActionCard
+            title="Flotte"
+            buttonLabel="Gérer la flotte"
+            buttonIcon={Plane}
+            buttonVariant="secondary"
+            onAction={() => setFleetOpen(true)}
+          >
             {drones && drones.length > 0 ? (
               <ul className="mb-4 space-y-1.5">
                 {drones.slice(0, 3).map((d) => (
@@ -109,16 +101,16 @@ export function AdminDashboard() {
             ) : (
               <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">Aucun drone enregistré.</p>
             )}
-            <Button variant="secondary" size="sm" className="gap-2" onClick={() => setFleetOpen(true)}>
-              <Plane size={16} strokeWidth={1.75} />
-              Gérer la flotte
-            </Button>
-          </Card>
+          </DashboardActionCard>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Réglages de vol & export</CardTitle>
-            </CardHeader>
+          <DashboardActionCard
+            title="Réglages de vol & export"
+            description="Propres à cet appareil — non synchronisés entre navigateurs ou comptes Admin."
+            buttonLabel="Modifier"
+            buttonIcon={Settings2}
+            buttonVariant="secondary"
+            onAction={() => setSettingsOpen(true)}
+          >
             <div className="mb-4 flex flex-wrap gap-1.5 text-[12px]">
               <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
                 Altitude max {formatAltitude(settings.defaultMaxAltitudeMeters, settings.altitudeUnit)}
@@ -133,11 +125,7 @@ export function AdminDashboard() {
                 Export {EXPORT_FORMAT_LABELS[settings.defaultExportFormat]}
               </span>
             </div>
-            <Button variant="secondary" size="sm" className="gap-2" onClick={() => setSettingsOpen(true)}>
-              <Settings2 size={16} strokeWidth={1.75} />
-              Modifier
-            </Button>
-          </Card>
+          </DashboardActionCard>
         </div>
       </div>
 
