@@ -23,7 +23,7 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
   const streamingAvailable = mission?.appareil === "appareil_photo";
 
   useEffect(() => {
-    if (mission) setMode(streamingAvailable ? "streaming" : "upload");
+    if (mission) setMode(streamingAvailable ? "streaming" : "differe");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mission]);
 
@@ -63,10 +63,10 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
 
           <button
             type="button"
-            onClick={() => setMode("upload")}
+            onClick={() => setMode("differe")}
             className={cn(
               "flex flex-col items-center gap-2 rounded-md border p-4 text-center transition-colors",
-              mode === "upload"
+              mode === "differe"
                 ? "border-brand-blue bg-brand-blue/5 dark:border-white dark:bg-white/10"
                 : "border-brand-gray/20 hover:bg-brand-off-white dark:border-white/15 dark:hover:bg-white/5"
             )}

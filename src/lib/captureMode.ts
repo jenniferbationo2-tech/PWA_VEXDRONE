@@ -1,16 +1,16 @@
 // Mode d'acquisition média choisi au lancement d'une mission (voir
-// LaunchMissionDialog). Aucun champ backend pour ça (VolCreate/VolUpdate et
-// MissionUpdate n'ont rien de prévu pour un tel choix, vérifié contre le
-// schéma OpenAPI live) : stockage local uniquement, propre à cet appareil —
-// même limite assumée que adminSettings.ts.
-export type CaptureMode = "streaming" | "upload";
+// LaunchMissionDialog). Envoyé au backend comme `capture_mode` dans
+// POST /vols/ (voir startFlight, client.ts) — mais aussi mis en cache ici en
+// localStorage, propre à cet appareil, car PhoneCaptureContext doit pouvoir
+// relire ce choix localement sans redemander le vol à chaque render.
+export type CaptureMode = "streaming" | "differe";
 
 const KEY_PREFIX = "vexdrone_capture_mode:";
 
 export function getCaptureMode(missionId: string): CaptureMode | null {
   try {
     const raw = localStorage.getItem(KEY_PREFIX + missionId);
-    return raw === "streaming" || raw === "upload" ? raw : null;
+    return raw === "streaming" || raw === "differe" ? raw : null;
   } catch {
     return null;
   }

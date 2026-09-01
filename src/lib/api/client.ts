@@ -15,6 +15,7 @@ import type {
   PlatformUser,
   Report,
 } from "./types";
+import type { CaptureMode } from "@/lib/captureMode";
 import {
   mockDashboardSummary,
   mockDrones,
@@ -238,28 +239,33 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
   };
   try {
     // Phase 1 : upload (+ extraction pour une video) de chaque fichier —
-    // compte pour la premiere moitie de la progression affichee.
-    const imageIds: string[] = [];
+    // compte pour la premiere moitie de la progression affichee. Depuis le
+    // contrat backend du 2026-09-01, l'upload renvoie deja l'image analysee
+    // dans le cas normal (`analysee: true`) — seules celles qui ne le sont
+    // pas (moteur indisponible au moment de l'upload) passent en Phase 2.
+    const pendingImageIds: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type.startsWith("video/")) {
         const video = await api.uploadVideo(missionId, file);
-        imageIds.push(...(await api.extractVideoFrames(video.id)));
+        const frames = await api.extractVideoFrames(video.id);
+        pendingImageIds.push(...frames.filter((f) => !f.analysee).map((f) => f.id));
       } else {
         const compressed = await compressImageFile(file);
         const image = await api.uploadImage(missionId, compressed);
-        imageIds.push(image.id);
+        if (!image.analysee) pendingImageIds.push(image.id);
       }
       setJob({ progress: Math.round(((i + 1) / files.length) * 50) });
     }
 
-    // Phase 2 : analyse de chaque image resultante (photos directes + frames
-    // extraites) — un echec isole (422 : moteur indisponible, deja analysee)
-    // ne doit pas faire echouer tout l'import, voir doc backend §6.2.
-    for (let i = 0; i < imageIds.length; i++) {
-      await api.analyzeImage(imageIds[i]).catch(() => {});
-      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, imageIds.length)) * 50) });
+    // Phase 2 : rattrapage des images pas encore analysees a l'upload — un
+    // echec isole (422 : moteur indisponible, deja analysee) ne doit pas
+    // faire echouer tout l'import, voir doc backend §6.2.
+    for (let i = 0; i < pendingImageIds.length; i++) {
+      await api.analyzeImage(pendingImageIds[i]).catch(() => {});
+      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, pendingImageIds.length)) * 50) });
     }
+    if (pendingImageIds.length === 0) setJob({ progress: 100 });
 
     setJob({ status: "terminee", progress: 100 });
   } catch (err) {
@@ -517,7 +523,10 @@ export const api = {
 
   // POST /vols/ passe directement le vol en "en_cours" — même moment que le
   // clic sur "Lancer" une mission (drone ou téléphone, les deux ont un Vol).
-  startFlight: async (missionId: string): Promise<Flight> => {
+  // capture_mode obligatoire côté backend depuis le contrat du 2026-09-01 —
+  // rejeté en 422 si streaming + appareil drone (déjà bloqué en amont côté
+  // UI, voir LaunchMissionDialog.tsx : streamingAvailable).
+  startFlight: async (missionId: string, captureMode: CaptureMode): Promise<Flight> => {
     if (USE_MOCKS) {
       mockFlight.missionId = missionId;
       mockFlight.status = "en_cours";
@@ -527,7 +536,7 @@ export const api = {
     }
     const raw = await apiFetch<BackendVol>("/api/v1/vols/", {
       method: "POST",
-      body: JSON.stringify({ mission_uuid: missionId }),
+      body: JSON.stringify({ mission_uuid: missionId, capture_mode: captureMode }),
     });
     return toFlight(raw);
   },
@@ -543,12 +552,17 @@ export const api = {
     });
   },
 
+  // Depuis le contrat backend du 2026-09-01, POST /images/ renvoie l'image
+  // déjà analysée (statut_analyse: "analysee") dans le cas normal — plus
+  // besoin d'enchaîner sur analyzeImage. On expose analysee pour que
+  // l'appelant ne le fasse que si nécessaire (ex: moteur indisponible au
+  // moment de l'upload).
   uploadImage: async (
     missionId: string,
     blob: Blob,
     gps?: { lat: number; lng: number }
-  ): Promise<{ id: string }> => {
-    if (USE_MOCKS) return delay({ id: `img-${Date.now()}` }, 200);
+  ): Promise<{ id: string; analysee: boolean }> => {
+    if (USE_MOCKS) return delay({ id: `img-${Date.now()}`, analysee: true }, 200);
     const form = new FormData();
     form.append("fichier", blob, "capture.jpg");
     form.append("mission_uuid", missionId);
@@ -556,12 +570,13 @@ export const api = {
       form.append("latitude", String(gps.lat));
       form.append("longitude", String(gps.lng));
     }
-    const data = await apiUpload<{ uuid: string }>("/api/v1/images/", form);
-    return { id: data.uuid };
+    const data = await apiUpload<{ uuid: string; statut_analyse: string }>("/api/v1/images/", form);
+    return { id: data.uuid, analysee: data.statut_analyse === "analysee" };
   },
 
   // Synchrone côté API ; peut renvoyer 422 (moteur indisponible, ou image déjà
   // analysée) — traité comme non bloquant par l'appelant (voir doc backend §6.2).
+  // N'est plus appelé que si l'upload n'a pas déjà renvoyé une image analysée.
   analyzeImage: async (imageId: string): Promise<void> => {
     if (USE_MOCKS) return delay(undefined, 200);
     await apiFetch<unknown>(`/api/v1/images/${imageId}/analyser`, { method: "POST" });
@@ -582,14 +597,23 @@ export const api = {
     return { id: data.uuid };
   },
 
-  // Lance l'extraction puis renvoie les uuid des frames obtenues (chacune une
-  // Image normale) — les deux étapes sont toujours faites ensemble ici, rien
-  // n'a besoin du détail de progression de l'extraction elle-même.
-  extractVideoFrames: async (videoId: string): Promise<string[]> => {
-    if (USE_MOCKS) return delay([`img-${Date.now()}-1`, `img-${Date.now()}-2`], 400);
+  // Lance l'extraction puis renvoie les frames obtenues (chacune une Image
+  // normale, déjà analysée depuis le contrat backend du 2026-09-01) — les
+  // deux étapes sont toujours faites ensemble ici, rien n'a besoin du détail
+  // de progression de l'extraction elle-même.
+  extractVideoFrames: async (videoId: string): Promise<{ id: string; analysee: boolean }[]> => {
+    if (USE_MOCKS) {
+      return delay(
+        [
+          { id: `img-${Date.now()}-1`, analysee: true },
+          { id: `img-${Date.now()}-2`, analysee: true },
+        ],
+        400
+      );
+    }
     await apiFetch<unknown>(`/api/v1/videos/${videoId}/extraire`, { method: "POST" });
     const frames = await apiFetch<{ data: BackendImage[] }>(`/api/v1/videos/${videoId}/frames?items_per_page=100`);
-    return frames.data.map((f) => f.uuid);
+    return frames.data.map((f) => ({ id: f.uuid, analysee: f.statut_analyse === "analysee" }));
   },
 
   // Tous les champs sont optionnels côté API (mise à jour partielle) —

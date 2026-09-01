@@ -62,7 +62,7 @@ export function Vols() {
 
   const activeMission = flight ? missions?.find((m) => m.id === flight.missionId) : undefined;
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
-  const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "upload" : false;
+  const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "differe" : false;
 
   // Reinterroge au meme rythme que le vol : de nouvelles photos arrivent en
   // continu pendant la capture live (PhoneCaptureContext.tsx, ~3s/photo).

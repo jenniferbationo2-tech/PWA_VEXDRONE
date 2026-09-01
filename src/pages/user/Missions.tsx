@@ -58,7 +58,7 @@ export function Missions() {
       });
       // Un Vol existe pour les deux méthodes d'inspection (drone ou
       // téléphone) — c'est lui que /vols/actif et la page Vols suivent.
-      await api.startFlight(mission.id);
+      await api.startFlight(mission.id, mode);
       return updated;
     },
     onSuccess: (updated) => {

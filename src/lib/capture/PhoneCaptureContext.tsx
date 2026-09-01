@@ -125,9 +125,11 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
     try {
       const image = await api.uploadImage(missionId, blob, gps);
-      // Analyse best-effort : un 422 (moteur indisponible / déjà analysée) ne
-      // doit pas interrompre la boucle de capture.
-      api.analyzeImage(image.id).catch(() => {});
+      // Depuis le contrat backend du 2026-09-01, l'upload renvoie deja
+      // l'image analysee dans le cas normal — on ne rappelle /analyser que
+      // si ce n'est pas le cas (moteur indisponible au moment de l'upload),
+      // en best-effort : un 422 ne doit pas interrompre la boucle de capture.
+      if (!image.analysee) api.analyzeImage(image.id).catch(() => {});
 
       imagesCapturedRef.current += 1;
       const battery = await getBatteryLevel();
@@ -218,7 +220,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     // Pas de mode enregistré (mission lancée avant ce choix, ou stockage
     // indisponible) : on retombe sur l'ancien comportement, streaming par
     // défaut pour une mission téléphone.
-    const isUploadMode = mission ? getCaptureMode(mission.id) === "upload" : false;
+    const isUploadMode = mission ? getCaptureMode(mission.id) === "differe" : false;
     const shouldCapture = mission?.appareil === "appareil_photo" && flight.status === "en_cours" && !isUploadMode;
 
     if (shouldCapture && mission && activeFlightIdRef.current !== flight.id) {
