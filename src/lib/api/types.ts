@@ -133,6 +133,20 @@ export interface Flight {
   droneConnection: "wifi" | "4g" | "hors_ligne";
 }
 
+// Statut d'analyse IA d'une image (BackendImage.statut_analyse) — seule
+// source de verite pour savoir si une image a ete effectivement verifiee :
+// ne jamais deduire cet etat de la reussite/echec de l'appel analyzeImage()
+// lui-meme, qui ne fait que declencher l'analyse (voir client.ts, doc backend §6.2).
+export type ImageAnalysisStatus = "en_attente" | "en_cours" | "analysee" | "echec";
+
+export interface MissionImage {
+  id: string;
+  url: string;
+  missionId: string;
+  analysisStatus: ImageAnalysisStatus;
+  capturedAt: string;
+}
+
 export interface Report {
   id: string;
   missionId: string;
@@ -151,6 +165,10 @@ export interface MediaAnalysisJob {
   progress: number; // 0-100
   fileCount: number;
   errorMessage?: string;
+  // Nombre d'images de ce lot qui n'ont pas atteint le statut "analysee"
+  // malgre les relances (voir waitForImagesResolved) — un job "terminee"
+  // avec failedCount > 0 doit rester nuance cote UI, pas un succes plein.
+  failedCount?: number;
 }
 
 export interface DashboardSummary {

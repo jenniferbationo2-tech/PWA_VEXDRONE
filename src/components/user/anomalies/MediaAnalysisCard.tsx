@@ -8,6 +8,7 @@ import {
   X,
   Loader2,
   CheckCircle2,
+  AlertTriangle,
   XCircle,
   ArrowRight,
 } from "lucide-react";
@@ -59,9 +60,13 @@ export function MediaAnalysisCard() {
     if (job.status === "terminee") {
       queryClient.invalidateQueries({ queryKey: ["anomalies"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
+      const failedCount = job.failedCount ?? 0;
       addNotification({
-        title: "Analyse terminée",
-        message: "Votre rapport d'analyse est prêt.",
+        title: failedCount > 0 ? "Analyse terminée avec erreurs" : "Analyse terminée",
+        message:
+          failedCount > 0
+            ? `Votre rapport est prêt — ${failedCount} image(s) n'ont pas pu être vérifiées.`
+            : "Votre rapport d'analyse est prêt.",
         link: "/rapports",
       });
     } else if (job.status === "echouee") {
@@ -228,9 +233,22 @@ export function MediaAnalysisCard() {
 
       {phase === "success" && (
         <div className="py-4 text-center">
-          <CheckCircle2 size={28} className="mx-auto mb-3 text-status-success" strokeWidth={1.75} />
-          <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark">Analyse terminée</p>
-          <p className="mb-4 text-[13px] text-brand-gray">Votre rapport d'analyse est prêt.</p>
+          {(job?.failedCount ?? 0) > 0 ? (
+            <>
+              <AlertTriangle size={28} className="mx-auto mb-3 text-brand-orange" strokeWidth={1.75} />
+              <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark">Analyse terminée avec erreurs</p>
+              <p className="mb-4 text-[13px] text-brand-gray">
+                {job?.failedCount} image{(job?.failedCount ?? 0) > 1 ? "s n'ont" : " n'a"} pas pu être vérifiée
+                {(job?.failedCount ?? 0) > 1 ? "s" : ""} malgré plusieurs tentatives.
+              </p>
+            </>
+          ) : (
+            <>
+              <CheckCircle2 size={28} className="mx-auto mb-3 text-status-success" strokeWidth={1.75} />
+              <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark">Analyse terminée</p>
+              <p className="mb-4 text-[13px] text-brand-gray">Votre rapport d'analyse est prêt.</p>
+            </>
+          )}
           <div className="flex items-center justify-center gap-2.5">
             <Link to="/rapports">
               <Button variant="primary" size="sm">

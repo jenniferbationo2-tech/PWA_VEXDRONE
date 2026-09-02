@@ -1,15 +1,28 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Square, UploadCloud, Video, VideoOff, Wifi, WifiOff } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Loader2,
+  Square,
+  UploadCloud,
+  Video,
+  VideoOff,
+  Wifi,
+  WifiOff,
+  XCircle,
+} from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
+import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
@@ -64,14 +77,11 @@ export function Vols() {
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
   const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "differe" : false;
 
-  // Reinterroge au meme rythme que le vol : de nouvelles photos arrivent en
-  // continu pendant la capture live (PhoneCaptureContext.tsx, ~3s/photo).
-  const { data: missionImages } = useQuery({
-    queryKey: ["mission-images", flight?.missionId],
-    queryFn: () => api.getMissionImages(flight!.missionId),
-    enabled: !!flight,
-    refetchInterval: 4000,
-  });
+  // Vérification IA de la mission (statut_analyse par image, avec relances
+  // automatiques) — sert à la fois la galerie ci-dessous et le bandeau de
+  // statut "tout est sain / en cours / échecs" (voir useAnalysisVerification).
+  const verification = useAnalysisVerification(flight?.missionId, { enabled: !!flight });
+  const missionImages = verification.images;
 
   // Meme cle que Anomalies.tsx/Carte.tsx : dedupe la requete si ces pages
   // sont deja montees. Pas de filtre par mission cote API (voir client.ts),
@@ -200,7 +210,11 @@ export function Vols() {
       <ConfirmDialog
         open={confirmEnd}
         title="Terminer la mission"
-        description="Le vol sera clôturé et la mission passera au statut Terminée. Cette action est définitive."
+        description={
+          verification.counts.pending > 0
+            ? `Le vol sera clôturé et la mission passera au statut Terminée. ${verification.counts.pending} image${verification.counts.pending > 1 ? "s sont" : " est"} encore en cours de vérification — l'analyse continuera après la fin du vol. Cette action est définitive.`
+            : "Le vol sera clôturé et la mission passera au statut Terminée. Cette action est définitive."
+        }
         confirmLabel="Terminer"
         loadingLabel="Clôture…"
         onConfirm={() => endMutation.mutate()}
@@ -289,12 +303,55 @@ export function Vols() {
         </div>
       </div>
 
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
+        {verification.counts.total === 0 ? (
+          <span className="text-[13px] text-brand-gray">Aucune image capturée pour l'instant.</span>
+        ) : (
+          <>
+            {verification.counts.pending > 0 && (
+              <Badge variant="pending">
+                <Loader2 size={12} className="animate-spin" />
+                {verification.counts.verified + verification.counts.failed}/{verification.counts.total} vérifiées
+              </Badge>
+            )}
+            {verification.counts.pending === 0 && verification.counts.failed === 0 && anomaliesCount === 0 && (
+              <Badge variant="success">
+                <CheckCircle2 size={12} />
+                Tout est sain — {verification.counts.total} image{verification.counts.total > 1 ? "s" : ""} vérifiée
+                {verification.counts.total > 1 ? "s" : ""}
+              </Badge>
+            )}
+            {anomaliesCount > 0 && (
+              <Badge variant="high">
+                <AlertTriangle size={12} />
+                {anomaliesCount} anomalie{anomaliesCount > 1 ? "s" : ""} détectée{anomaliesCount > 1 ? "s" : ""}
+              </Badge>
+            )}
+            {verification.counts.failed > 0 && (
+              <>
+                <Badge variant="high">
+                  <XCircle size={12} />
+                  {verification.counts.failed} image{verification.counts.failed > 1 ? "s" : ""} non vérifiée
+                  {verification.counts.failed > 1 ? "s" : ""}
+                </Badge>
+                <button
+                  onClick={verification.retryFailed}
+                  className="text-[12px] font-semibold text-brand-blue hover:underline"
+                >
+                  Réessayer
+                </button>
+              </>
+            )}
+          </>
+        )}
+      </div>
+
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
           <h3 className="mb-4">Images captées en direct</h3>
           {missionImages && missionImages.length > 0 ? (
             <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
-              {missionImages.map((img) => (
+              {missionImages.slice(0, 8).map((img) => (
                 <img
                   key={img.id}
                   src={img.url}

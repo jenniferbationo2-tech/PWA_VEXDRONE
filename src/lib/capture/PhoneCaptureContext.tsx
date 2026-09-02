@@ -2,6 +2,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
+import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
 
 // Cadence de capture : alignée sur celle de l'extraction de frames vidéo côté
@@ -107,6 +108,61 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   });
   const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
 
+  // Suivi de verification IA de la mission en cours — persiste au-dela de la
+  // fin du vol (flight disparait de getActiveFlight des que la mission n'est
+  // plus "en_cours"), pour pouvoir prevenir le technicien meme s'il a quitte
+  // l'ecran Vols avant la fin de l'analyse. Regarde toujours la derniere
+  // mission connue, pas seulement une mission telephone/streaming — un vol
+  // drone beneficie du meme filet de securite.
+  const [watchedMissionId, setWatchedMissionId] = useState<string | undefined>(undefined);
+  useEffect(() => {
+    if (flight?.missionId) setWatchedMissionId(flight.missionId);
+  }, [flight?.missionId]);
+
+  const verification = useAnalysisVerification(watchedMissionId, { enabled: !!watchedMissionId });
+  const { data: watchedAnomalies } = useQuery({
+    queryKey: ["anomalies"],
+    queryFn: api.getAnomalies,
+    enabled: !!watchedMissionId,
+    refetchInterval: 4000,
+  });
+  const watchedMission = missions?.find((m) => m.id === watchedMissionId);
+  const missionEnded = watchedMission?.status === "terminee";
+  const notifiedMissionsRef = useRef<Set<string>>(new Set());
+
+  // Notifie une seule fois par mission, une fois le vol termine ET toutes les
+  // images resolues (verifiees ou definitivement en echec) — jamais en cours
+  // de vol, pour ne pas se declencher prematurement sur la toute premiere
+  // image capturee (voir useAnalysisVerification : allResolved peut flicker
+  // a vrai entre deux captures tant que le vol tourne).
+  useEffect(() => {
+    if (!watchedMissionId || !missionEnded) return;
+    if (verification.counts.total === 0) return;
+    if (!verification.allResolved) return;
+    if (notifiedMissionsRef.current.has(watchedMissionId)) return;
+    notifiedMissionsRef.current.add(watchedMissionId);
+
+    const anomaliesCount = watchedAnomalies?.filter((a) => a.missionId === watchedMissionId).length ?? 0;
+    if (verification.counts.failed > 0) {
+      addNotification({
+        title: "Vérification terminée avec erreurs",
+        message: `${verification.counts.failed} image(s) n'ont pas pu être vérifiées malgré plusieurs tentatives.`,
+        link: "/vols",
+      });
+    } else if (anomaliesCount > 0) {
+      addNotification({
+        title: "Vérification terminée",
+        message: `${anomaliesCount} anomalie(s) détectée(s) sur cette mission.`,
+        link: "/anomalies",
+      });
+    } else {
+      addNotification({
+        title: "Vérification terminée",
+        message: "Toutes les images sont saines, aucune anomalie détectée.",
+      });
+    }
+  }, [watchedMissionId, missionEnded, verification.allResolved, verification.counts.total, verification.counts.failed, watchedAnomalies, addNotification]);
+
   async function captureOnce(missionId: string, flightId: string) {
     const video = videoRef.current;
     if (!video || video.readyState < 2) return;
@@ -125,11 +181,12 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
     try {
       const image = await api.uploadImage(missionId, blob, gps);
-      // Appelee inconditionnellement meme si l'upload annonce deja
-      // `analysee: true` — ce flag backend s'est revele peu fiable en
-      // pratique (annonce prematuree, analyse encore async cote serveur).
-      // Best-effort : un 422 (moteur indisponible / deja analysee) ne doit
-      // pas interrompre la boucle de capture.
+      // Best-effort : ne fait que declencher l'analyse, un echec ici (reseau,
+      // 422 moteur indisponible/deja analysee) ne doit pas interrompre la
+      // boucle de capture. Le filet de securite n'est plus ce `.catch`, c'est
+      // le moteur de verification (useAnalysisVerification.ts) : il repolle
+      // statut_analyse et relance automatiquement toute image restee bloquee,
+      // y compris si cet appel n'a meme jamais atteint le serveur.
       api.analyzeImage(image.id).catch(() => {});
 
       imagesCapturedRef.current += 1;

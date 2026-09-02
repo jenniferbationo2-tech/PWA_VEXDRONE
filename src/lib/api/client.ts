@@ -6,6 +6,7 @@ import type {
   Flight,
   MediaAnalysisJob,
   Mission,
+  MissionImage,
   MissionStatus,
   NewAdminInput,
   NewDroneInput,
@@ -35,9 +36,11 @@ import {
   toEntreprise,
   toFlight,
   toMission,
+  toMissionImage,
   toPlatformUser,
   toReport,
 } from "./mappers";
+import { waitForImagesResolved } from "@/lib/analysis/verifyImages";
 import type {
   BackendAnomaly,
   BackendDashboardStats,
@@ -229,6 +232,7 @@ interface MediaJobState {
   progress: number;
   fileCount: number;
   errorMessage?: string;
+  failedCount?: number;
 }
 const mediaJobs = new Map<string, MediaJobState>();
 
@@ -239,7 +243,7 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
   };
   try {
     // Phase 1 : upload (+ extraction pour une video) de chaque fichier —
-    // compte pour la premiere moitie de la progression affichee.
+    // compte pour les 50 premiers % de la progression affichee.
     const imageIds: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
@@ -254,19 +258,28 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
       setJob({ progress: Math.round(((i + 1) / files.length) * 50) });
     }
 
-    // Phase 2 : analyse de chaque image resultante. Appelee inconditionnellement
-    // meme si l'upload annonce deja `analysee: true` — ce flag backend s'est
-    // revele peu fiable en pratique (annonce prematuree, analyse encore async
-    // cote serveur), et sauter cet appel laissait des jobs se terminer sans
-    // qu'aucune anomalie n'ait ete calculee. Un echec isole (422 : moteur
-    // indisponible, deja analysee) ne doit pas faire echouer tout l'import,
-    // voir doc backend §6.2.
+    // Phase 2 : declenche l'analyse de chaque image resultante (best-effort —
+    // ce n'est qu'un declencheur, jamais la source de verite, voir §6.2 doc
+    // backend et verifyImages.ts). Compte pour les 40 % suivants.
     for (let i = 0; i < imageIds.length; i++) {
       await api.analyzeImage(imageIds[i]).catch(() => {});
-      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, imageIds.length)) * 50) });
+      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, imageIds.length)) * 40) });
     }
 
-    setJob({ status: "terminee", progress: 100 });
+    // Phase 3 : attend que chaque image atteigne un etat terminal cote backend
+    // (analysee/echec), avec relances bornees pour rattraper un declenchement
+    // perdu (voir waitForImagesResolved) — ne declare "terminee" qu'une fois
+    // ceci confirme, jamais juste apres la boucle d'appels ci-dessus.
+    const { failed } = await waitForImagesResolved(
+      async () => {
+        const images = await api.getMissionImages(missionId);
+        const idSet = new Set(imageIds);
+        return images.filter((img) => idSet.has(img.id));
+      },
+      { analyzeImage: api.analyzeImage }
+    );
+
+    setJob({ status: "terminee", progress: 100, failedCount: failed });
   } catch (err) {
     setJob({
       status: "echouee",
@@ -497,27 +510,37 @@ export const api = {
 
   // Les plus recentes d'abord — /images/ ne garantit pas d'ordre explicite,
   // tri fait cote client sur created_at (le seul champ fiable pour ca,
-  // date_capture peut manquer si pas d'EXIF). Utilise par Vols.tsx pour la
-  // grille "Images captees en direct", qui affichait jusqu'ici des cases
-  // vides plutot que les vraies photos.
-  getMissionImages: async (missionId: string, limit = 8): Promise<{ id: string; url: string }[]> => {
+  // date_capture peut manquer si pas d'EXIF). Renvoie toute la mission (pas
+  // juste les dernieres) : sert a la fois a la galerie "Images captees en
+  // direct" (Vols.tsx, tronquee cote appelant) et au comptage de verification
+  // IA (useAnalysisVerification.ts) — items_per_page large pour couvrir une
+  // mission complete, pas seulement les 8 dernieres captures.
+  getMissionImages: async (missionId: string): Promise<MissionImage[]> => {
     if (USE_MOCKS) {
+      // Simule une progression realiste : les images les plus recentes
+      // n'ont pas encore ete "analysees", et une image sur 12 simule un
+      // echec persistant pour pouvoir tester l'etat "Reessayer" en mock.
       return delay(
-        Array.from({ length: Math.min(limit, mockFlight.imagesCaptured) }).map((_, i) => ({
-          id: `mock-img-${i}`,
-          url: "",
-        })),
+        Array.from({ length: mockFlight.imagesCaptured }).map((_, i) => {
+          const age = mockFlight.imagesCaptured - i;
+          return {
+            id: `mock-img-${i}`,
+            url: "",
+            missionId,
+            analysisStatus: i % 12 === 5 ? "echec" : age <= 1 ? "en_attente" : "analysee",
+            capturedAt: new Date().toISOString(),
+          } satisfies MissionImage;
+        }),
         150
       );
     }
     const raw = await apiFetch<{ data: BackendImage[] }>(
-      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=20`
+      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=200`
     );
     return raw.data
       .slice()
       .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .slice(0, limit)
-      .map((img) => ({ id: img.uuid, url: `/api/v1/images/${img.uuid}/fichier` }));
+      .map(toMissionImage);
   },
 
   // POST /vols/ passe directement le vol en "en_cours" — même moment que le

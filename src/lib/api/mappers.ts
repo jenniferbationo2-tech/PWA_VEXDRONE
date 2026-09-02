@@ -1,4 +1,16 @@
-import type { Mission, Anomaly, Flight, Report, Severity, MissionStatus, Drone, Entreprise, PlatformUser } from "./types";
+import type {
+  Mission,
+  Anomaly,
+  Flight,
+  ImageAnalysisStatus,
+  MissionImage,
+  Report,
+  Severity,
+  MissionStatus,
+  Drone,
+  Entreprise,
+  PlatformUser,
+} from "./types";
 import type {
   BackendAnomalyType,
   BackendMission,
@@ -160,6 +172,27 @@ export function toFlight(raw: BackendVol): Flight {
     imagesCaptured: raw.images_capturees,
     gps: { lat: raw.latitude ?? 0, lng: raw.longitude ?? 0 },
     droneConnection: raw.connexion_drone,
+  };
+}
+
+const IMAGE_ANALYSIS_STATUSES: readonly ImageAnalysisStatus[] = ["en_attente", "en_cours", "analysee", "echec"];
+
+// statut_analyse est type `string` cote backend par prudence runtime (voir
+// backendTypes.ts) : une valeur inconnue retombe sur "en_attente" plutot que
+// de faire planter le comptage de verification (voir useAnalysisVerification).
+export function toImageAnalysisStatus(statut: string): ImageAnalysisStatus {
+  return (IMAGE_ANALYSIS_STATUSES as readonly string[]).includes(statut)
+    ? (statut as ImageAnalysisStatus)
+    : "en_attente";
+}
+
+export function toMissionImage(raw: BackendImage): MissionImage {
+  return {
+    id: raw.uuid,
+    url: `/api/v1/images/${raw.uuid}/fichier`,
+    missionId: raw.mission_uuid,
+    analysisStatus: toImageAnalysisStatus(raw.statut_analyse),
+    capturedAt: raw.date_capture ?? raw.created_at,
   };
 }
 
