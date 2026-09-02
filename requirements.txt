@@ -1,2 +1,10 @@
-Uvicorn[standard] fastapi Ultralytiques Oreiller exifread numpy psycopg2-binaire # si Postgres/PostGIS sqlalchemy aiofiles
 
+uvicorn[standard]
+fastapi
+ultralytics
+Pillow
+exifread
+numpy
+psycopg2-binary
+sqlalchemy
+aiofiles
