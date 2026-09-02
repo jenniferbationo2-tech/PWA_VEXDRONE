@@ -125,11 +125,12 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
     try {
       const image = await api.uploadImage(missionId, blob, gps);
-      // Depuis le contrat backend du 2026-09-01, l'upload renvoie deja
-      // l'image analysee dans le cas normal — on ne rappelle /analyser que
-      // si ce n'est pas le cas (moteur indisponible au moment de l'upload),
-      // en best-effort : un 422 ne doit pas interrompre la boucle de capture.
-      if (!image.analysee) api.analyzeImage(image.id).catch(() => {});
+      // Appelee inconditionnellement meme si l'upload annonce deja
+      // `analysee: true` — ce flag backend s'est revele peu fiable en
+      // pratique (annonce prematuree, analyse encore async cote serveur).
+      // Best-effort : un 422 (moteur indisponible / deja analysee) ne doit
+      // pas interrompre la boucle de capture.
+      api.analyzeImage(image.id).catch(() => {});
 
       imagesCapturedRef.current += 1;
       const battery = await getBatteryLevel();

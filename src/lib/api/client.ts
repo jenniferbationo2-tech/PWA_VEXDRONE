@@ -239,33 +239,32 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
   };
   try {
     // Phase 1 : upload (+ extraction pour une video) de chaque fichier —
-    // compte pour la premiere moitie de la progression affichee. Depuis le
-    // contrat backend du 2026-09-01, l'upload renvoie deja l'image analysee
-    // dans le cas normal (`analysee: true`) — seules celles qui ne le sont
-    // pas (moteur indisponible au moment de l'upload) passent en Phase 2.
-    const pendingImageIds: string[] = [];
+    // compte pour la premiere moitie de la progression affichee.
+    const imageIds: string[] = [];
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (file.type.startsWith("video/")) {
         const video = await api.uploadVideo(missionId, file);
-        const frames = await api.extractVideoFrames(video.id);
-        pendingImageIds.push(...frames.filter((f) => !f.analysee).map((f) => f.id));
+        imageIds.push(...(await api.extractVideoFrames(video.id)).map((f) => f.id));
       } else {
         const compressed = await compressImageFile(file);
         const image = await api.uploadImage(missionId, compressed);
-        if (!image.analysee) pendingImageIds.push(image.id);
+        imageIds.push(image.id);
       }
       setJob({ progress: Math.round(((i + 1) / files.length) * 50) });
     }
 
-    // Phase 2 : rattrapage des images pas encore analysees a l'upload — un
-    // echec isole (422 : moteur indisponible, deja analysee) ne doit pas
-    // faire echouer tout l'import, voir doc backend §6.2.
-    for (let i = 0; i < pendingImageIds.length; i++) {
-      await api.analyzeImage(pendingImageIds[i]).catch(() => {});
-      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, pendingImageIds.length)) * 50) });
+    // Phase 2 : analyse de chaque image resultante. Appelee inconditionnellement
+    // meme si l'upload annonce deja `analysee: true` — ce flag backend s'est
+    // revele peu fiable en pratique (annonce prematuree, analyse encore async
+    // cote serveur), et sauter cet appel laissait des jobs se terminer sans
+    // qu'aucune anomalie n'ait ete calculee. Un echec isole (422 : moteur
+    // indisponible, deja analysee) ne doit pas faire echouer tout l'import,
+    // voir doc backend §6.2.
+    for (let i = 0; i < imageIds.length; i++) {
+      await api.analyzeImage(imageIds[i]).catch(() => {});
+      setJob({ progress: 50 + Math.round(((i + 1) / Math.max(1, imageIds.length)) * 50) });
     }
-    if (pendingImageIds.length === 0) setJob({ progress: 100 });
 
     setJob({ status: "terminee", progress: 100 });
   } catch (err) {
@@ -552,17 +551,12 @@ export const api = {
     });
   },
 
-  // Depuis le contrat backend du 2026-09-01, POST /images/ renvoie l'image
-  // déjà analysée (statut_analyse: "analysee") dans le cas normal — plus
-  // besoin d'enchaîner sur analyzeImage. On expose analysee pour que
-  // l'appelant ne le fasse que si nécessaire (ex: moteur indisponible au
-  // moment de l'upload).
   uploadImage: async (
     missionId: string,
     blob: Blob,
     gps?: { lat: number; lng: number }
-  ): Promise<{ id: string; analysee: boolean }> => {
-    if (USE_MOCKS) return delay({ id: `img-${Date.now()}`, analysee: true }, 200);
+  ): Promise<{ id: string }> => {
+    if (USE_MOCKS) return delay({ id: `img-${Date.now()}` }, 200);
     const form = new FormData();
     form.append("fichier", blob, "capture.jpg");
     form.append("mission_uuid", missionId);
@@ -570,13 +564,15 @@ export const api = {
       form.append("latitude", String(gps.lat));
       form.append("longitude", String(gps.lng));
     }
-    const data = await apiUpload<{ uuid: string; statut_analyse: string }>("/api/v1/images/", form);
-    return { id: data.uuid, analysee: data.statut_analyse === "analysee" };
+    const data = await apiUpload<{ uuid: string }>("/api/v1/images/", form);
+    return { id: data.uuid };
   },
 
   // Synchrone côté API ; peut renvoyer 422 (moteur indisponible, ou image déjà
   // analysée) — traité comme non bloquant par l'appelant (voir doc backend §6.2).
-  // N'est plus appelé que si l'upload n'a pas déjà renvoyé une image analysée.
+  // Toujours appelée après un upload, même si le backend annonce parfois
+  // l'image déjà analysée (statut_analyse: "analysee") : ce flag s'est révélé
+  // peu fiable pour déclencher l'analyse elle-même (voir commit du 2026-09-02).
   analyzeImage: async (imageId: string): Promise<void> => {
     if (USE_MOCKS) return delay(undefined, 200);
     await apiFetch<unknown>(`/api/v1/images/${imageId}/analyser`, { method: "POST" });
@@ -597,23 +593,16 @@ export const api = {
     return { id: data.uuid };
   },
 
-  // Lance l'extraction puis renvoie les frames obtenues (chacune une Image
-  // normale, déjà analysée depuis le contrat backend du 2026-09-01) — les
-  // deux étapes sont toujours faites ensemble ici, rien n'a besoin du détail
-  // de progression de l'extraction elle-même.
-  extractVideoFrames: async (videoId: string): Promise<{ id: string; analysee: boolean }[]> => {
+  // Lance l'extraction puis renvoie les uuid des frames obtenues (chacune une
+  // Image normale) — les deux étapes sont toujours faites ensemble ici, rien
+  // n'a besoin du détail de progression de l'extraction elle-même.
+  extractVideoFrames: async (videoId: string): Promise<{ id: string }[]> => {
     if (USE_MOCKS) {
-      return delay(
-        [
-          { id: `img-${Date.now()}-1`, analysee: true },
-          { id: `img-${Date.now()}-2`, analysee: true },
-        ],
-        400
-      );
+      return delay([{ id: `img-${Date.now()}-1` }, { id: `img-${Date.now()}-2` }], 400);
     }
     await apiFetch<unknown>(`/api/v1/videos/${videoId}/extraire`, { method: "POST" });
     const frames = await apiFetch<{ data: BackendImage[] }>(`/api/v1/videos/${videoId}/frames?items_per_page=100`);
-    return frames.data.map((f) => ({ id: f.uuid, analysee: f.statut_analyse === "analysee" }));
+    return frames.data.map((f) => ({ id: f.uuid }));
   },
 
   // Tous les champs sont optionnels côté API (mise à jour partielle) —
