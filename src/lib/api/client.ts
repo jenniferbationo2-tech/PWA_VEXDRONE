@@ -29,6 +29,7 @@ import {
   mockFlight,
 } from "./mockData";
 import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
+import { sortByNewestFirst } from "@/lib/utils";
 import {
   toAnomaly,
   toBackendMissionStatus,
@@ -189,6 +190,14 @@ function missionUpdatePayload(input: NewMissionInput) {
 // pas sur l'anomalie elle-meme (voir toAnomaly) — /anomalies/ ne renvoie que
 // image_uuid. Un aller simple par image distincte (dedupliquee, en
 // parallele) pour recuperer lat/lng/mission_uuid.
+// PlatformUser/UserRead n'expose aucun created_at côté API (schéma live
+// vérifié) — l'id (numérique côté backend, préfixé "u-" en mock) est
+// attribué en ordre croissant à la création, donc trié décroissant il
+// approxime "plus récent en premier" sans dépendre d'un champ absent.
+function userIdSortKey(user: PlatformUser): number {
+  return Number(user.id.match(/\d+/)?.[0] ?? 0);
+}
+
 async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
   const raw = await apiFetch<{ data: BackendAnomaly[] }>(`/api/v1/anomalies/?items_per_page=${itemsPerPage}`);
   const imageUuids = [...new Set(raw.data.map((a) => a.image_uuid))];
@@ -196,7 +205,7 @@ async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
     imageUuids.map((uuid) => apiFetch<BackendImage>(`/api/v1/images/${uuid}`).catch(() => null))
   );
   const imageByUuid = new Map(images.filter((i): i is BackendImage => i !== null).map((i) => [i.uuid, i]));
-  return raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid)));
+  return sortByNewestFirst(raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid))), (a) => a.detectedAt);
 }
 
 // Recompresse un fichier image en JPEG qualite 0.8 avant l'upload (memes
@@ -343,14 +352,16 @@ export const api = {
     // Copie superficielle : mockMissions est mutée en place par create/update/delete,
     // renvoyer la même référence empêcherait React Query (structural sharing) de
     // détecter un changement après invalidateQueries et de re-render.
-    if (USE_MOCKS) return delay([...mockMissions]);
+    // Trié une seule fois ici (plus récent en premier) : toutes les pages qui
+    // consomment ["missions"] en héritent sans avoir à re-trier elles-mêmes.
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockMissions, (m) => m.createdAt));
     const raw = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
-    return raw.data.map(toMission);
+    return sortByNewestFirst(raw.data.map(toMission), (m) => m.createdAt);
   },
 
   createMission: async (input: NewMissionInput): Promise<Mission> => {
     if (USE_MOCKS) {
-      const newMission: Mission = { ...input, id: `m-${Date.now()}` };
+      const newMission: Mission = { ...input, id: `m-${Date.now()}`, createdAt: new Date().toISOString() };
       mockMissions.unshift(newMission);
       return delay(newMission, 400);
     }
@@ -365,8 +376,14 @@ export const api = {
     if (USE_MOCKS) {
       const index = mockMissions.findIndex((m) => m.id === id);
       if (index === -1) throw new Error("Mission introuvable");
-      // appareil/droneId ne sont pas modifiables : on garde ceux de la mission existante.
-      mockMissions[index] = { ...input, id, appareil: mockMissions[index].appareil, droneId: mockMissions[index].droneId };
+      // appareil/droneId/createdAt ne sont pas modifiables : on garde ceux de la mission existante.
+      mockMissions[index] = {
+        ...input,
+        id,
+        appareil: mockMissions[index].appareil,
+        droneId: mockMissions[index].droneId,
+        createdAt: mockMissions[index].createdAt,
+      };
       return delay(mockMissions[index], 400);
     }
     // Le PATCH renvoie 204 sans corps : on relit la mission a jour ensuite.
@@ -389,9 +406,9 @@ export const api = {
   },
 
   getDrones: async (): Promise<Drone[]> => {
-    if (USE_MOCKS) return delay([...mockDrones]);
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockDrones, (d) => d.createdAt));
     const raw = await apiFetch<{ data: BackendDrone[] }>("/api/v1/drones/");
-    return raw.data.map(toDrone);
+    return sortByNewestFirst(raw.data.map(toDrone), (d) => d.createdAt);
   },
 
   // Flotte partagée par toute la plateforme, pas cloisonnée par entreprise
@@ -399,7 +416,13 @@ export const api = {
   // voir BACKEND_REQUESTS.md §1). Réservé aux administrateurs.
   createDrone: async (input: NewDroneInput): Promise<Drone> => {
     if (USE_MOCKS) {
-      const drone: Drone = { id: `d-${Date.now()}`, identifiant: input.identifiant, modele: input.modele ?? "", status: "disponible" };
+      const drone: Drone = {
+        id: `d-${Date.now()}`,
+        identifiant: input.identifiant,
+        modele: input.modele ?? "",
+        status: "disponible",
+        createdAt: new Date().toISOString(),
+      };
       mockDrones.unshift(drone);
       return delay(drone, 400);
     }
@@ -440,7 +463,7 @@ export const api = {
   },
 
   getAnomalies: async (): Promise<Anomaly[]> => {
-    if (USE_MOCKS) return delay(mockAnomalies);
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockAnomalies, (a) => a.detectedAt));
     return fetchAnomaliesWithImages();
   },
 
@@ -534,8 +557,12 @@ export const api = {
         150
       );
     }
+    // items_per_page plafonné à 100 côté API (schéma live, GET /images/ :
+    // "maximum": 100) — 200 declenchait un 422 avant meme d'atteindre la
+    // logique metier. Une mission avec plus de 100 images ne remonterait
+    // que la 1ere page ; a repaginer si ce cas se presente en pratique.
     const raw = await apiFetch<{ data: BackendImage[] }>(
-      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=200`
+      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=100`
     );
     return raw.data
       .slice()
@@ -661,9 +688,9 @@ export const api = {
   // ---- Réservé SUPERADMIN ----
 
   getEntreprises: async (): Promise<Entreprise[]> => {
-    if (USE_MOCKS) return delay([...mockEntreprises]);
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockEntreprises, (e) => e.createdAt));
     const raw = await apiFetch<{ data: BackendEntreprise[] }>("/api/v1/entreprises/?items_per_page=100");
-    return raw.data.map(toEntreprise);
+    return sortByNewestFirst(raw.data.map(toEntreprise), (e) => e.createdAt);
   },
 
   createEntreprise: async (nom: string): Promise<Entreprise> => {
@@ -722,9 +749,9 @@ export const api = {
   // on récupère tout (items_per_page large, taille attendue faible pour ce POC)
   // et le composant appelant filtre par entrepriseId côté client.
   getPlatformUsers: async (): Promise<PlatformUser[]> => {
-    if (USE_MOCKS) return delay([...mockPlatformUsers]);
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockPlatformUsers, userIdSortKey));
     const raw = await apiFetch<{ data: BackendPlatformUser[] }>("/api/v1/users/?items_per_page=100");
-    return raw.data.map(toPlatformUser);
+    return sortByNewestFirst(raw.data.map(toPlatformUser), userIdSortKey);
   },
 
   createAdminAccount: async (input: NewAdminInput): Promise<PlatformUser> => {
@@ -760,9 +787,9 @@ export const api = {
   // L'entreprise et le rôle (utilisateur) sont forcés côté serveur à partir
   // du compte Admin appelant — jamais dans le payload, voir doc /users/team.
   getTeamMembers: async (): Promise<PlatformUser[]> => {
-    if (USE_MOCKS) return delay([...mockTeamMembers]);
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockTeamMembers, userIdSortKey));
     const raw = await apiFetch<{ data: BackendPlatformUser[] }>("/api/v1/users/team?items_per_page=100");
-    return raw.data.map(toPlatformUser);
+    return sortByNewestFirst(raw.data.map(toPlatformUser), userIdSortKey);
   },
 
   createTeamMember: async (input: NewTeamMemberInput): Promise<PlatformUser> => {
@@ -809,7 +836,8 @@ export const api = {
     const itemsPerPage = params.itemsPerPage ?? 10;
 
     if (USE_MOCKS) {
-      const filtered = params.status ? mockMissions.filter((m) => m.status === params.status) : mockMissions;
+      const source = params.status ? mockMissions.filter((m) => m.status === params.status) : mockMissions;
+      const filtered = sortByNewestFirst(source, (m) => m.createdAt);
       const start = (page - 1) * itemsPerPage;
       const pageData = filtered.slice(start, start + itemsPerPage);
       return delay({
@@ -832,8 +860,12 @@ export const api = {
       items_per_page: number | null;
     }>(`/api/v1/missions/entreprise?${query}`);
 
+    // Le backend ne propose aucun param de tri (schéma live vérifié) : trier
+    // ici ne réordonne que la page reçue. Correct pour un appel "tout charger"
+    // (itemsPerPage élevé, page 1 — voir admin/Missions.tsx), pas garanti pour
+    // une vraie pagination serveur multi-pages sur un gros volume.
     return {
-      data: raw.data.map(toMission),
+      data: sortByNewestFirst(raw.data.map(toMission), (m) => m.createdAt),
       totalCount: raw.total_count,
       hasMore: raw.has_more,
       page: raw.page ?? page,

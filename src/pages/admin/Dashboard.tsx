@@ -1,26 +1,23 @@
 import { useState } from "react";
-import { CalendarClock, ClipboardList, Plane, Settings2, Users } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { CalendarClock, ClipboardList, Plane, Users } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { StatCard } from "@/components/user/dashboard/StatCard";
 import { StatGridSkeleton } from "@/components/ui/StatGridSkeleton";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
-import { DashboardActionCard } from "@/components/dashboard/DashboardActionCard";
-import { FleetModal } from "@/components/admin/dashboard/FleetModal";
-import { SettingsModal } from "@/components/admin/dashboard/SettingsModal";
+import { FleetStatusWidget } from "@/components/admin/dashboard/FleetStatusWidget";
+import { FlightSettingsWidget } from "@/components/admin/dashboard/FlightSettingsWidget";
+import { MissionsTimelineChart } from "@/components/admin/dashboard/MissionsTimelineChart";
+import { TechnicienWorkloadChart } from "@/components/admin/dashboard/TechnicienWorkloadChart";
 import { api } from "@/lib/api/client";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { prettifyUsername } from "@/lib/utils";
-import { formatAltitude, formatSpeed, getAdminSettings, EXPORT_FORMAT_LABELS, type AdminSettings } from "@/lib/adminSettings";
+import { getAdminSettings, type AdminSettings } from "@/lib/adminSettings";
 
 export function AdminDashboard() {
   const { user } = useAuth();
-  const navigate = useNavigate();
   const displayName = user?.name ?? prettifyUsername(user?.username ?? "");
 
-  const [fleetOpen, setFleetOpen] = useState(false);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [settings, setSettings] = useState<AdminSettings>(() => getAdminSettings());
+  const [settings] = useState<AdminSettings>(() => getAdminSettings());
 
   const { data: members, isLoading: membersLoading } = useQuery({ queryKey: ["team-members"], queryFn: api.getTeamMembers });
   const { data: enCours, isLoading: enCoursLoading } = useQuery({
@@ -32,13 +29,24 @@ export function AdminDashboard() {
     queryFn: () => api.getEntrepriseMissions({ status: "en_attente", itemsPerPage: 1 }),
   });
   const { data: drones, isLoading: dronesLoading } = useQuery({ queryKey: ["drones"], queryFn: api.getDrones });
+  // Liste complète (pas juste un compteur paginé) pour alimenter les graphiques
+  // ci-dessous — même endpoint que les compteurs "en cours"/"planifiées".
+  const { data: allMissions, isLoading: allMissionsLoading } = useQuery({
+    queryKey: ["entreprise-missions", "all"],
+    queryFn: () => api.getEntrepriseMissions({ itemsPerPage: 100 }),
+  });
   const dronesDisponibles = drones?.filter((d) => d.status === "disponible").length ?? 0;
   const statsLoading = membersLoading || enCoursLoading || planifieesLoading || dronesLoading;
 
   return (
     <div>
-      <h1>Espace Admin</h1>
-      <p className="mt-2 text-brand-gray dark:text-white/60">Bienvenue, {displayName}.</p>
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div>
+          <h1>Espace Admin</h1>
+          <p className="mt-2 text-brand-gray dark:text-white/60">Bienvenue, {displayName}.</p>
+        </div>
+        <WeatherCard />
+      </div>
 
       <div className="mt-6">
         {statsLoading ? (
@@ -58,79 +66,14 @@ export function AdminDashboard() {
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-4">
-          <WeatherCard />
-
-          <DashboardActionCard
-            title="Techniciens"
-            description="Inscris et gère les techniciens de ton entreprise sur la plateforme."
-            buttonLabel="Gérer les techniciens"
-            buttonIcon={Users}
-            onAction={() => navigate("/admin/techniciens")}
-          />
-
-          <DashboardActionCard
-            title="Missions"
-            description="Suis les missions de tous les techniciens de ton entreprise."
-            buttonLabel="Voir les missions"
-            buttonIcon={ClipboardList}
-            onAction={() => navigate("/admin/missions")}
-          />
-        </div>
-
-        <div className="space-y-4">
-          <DashboardActionCard
-            title="Flotte"
-            buttonLabel="Gérer la flotte"
-            buttonIcon={Plane}
-            buttonVariant="secondary"
-            onAction={() => setFleetOpen(true)}
-          >
-            {drones && drones.length > 0 ? (
-              <ul className="mb-4 space-y-1.5">
-                {drones.slice(0, 3).map((d) => (
-                  <li
-                    key={d.id}
-                    className="flex items-center justify-between rounded-lg border border-brand-blue/[0.06] px-3.5 py-2 text-[13px] dark:border-white/10"
-                  >
-                    <span className="font-medium text-brand-blue-dark dark:text-white">{d.identifiant}</span>
-                    <span className="text-brand-gray dark:text-white/60">{d.modele || "—"}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : (
-              <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">Aucun drone enregistré.</p>
-            )}
-          </DashboardActionCard>
-
-          <DashboardActionCard
-            title="Réglages de vol & export"
-            description="Propres à cet appareil — non synchronisés entre navigateurs ou comptes Admin."
-            buttonLabel="Modifier"
-            buttonIcon={Settings2}
-            buttonVariant="secondary"
-            onAction={() => setSettingsOpen(true)}
-          >
-            <div className="mb-4 flex flex-wrap gap-1.5 text-[12px]">
-              <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
-                Altitude max {formatAltitude(settings.defaultMaxAltitudeMeters, settings.altitudeUnit)}
-              </span>
-              <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
-                {settings.altitudeUnit === "ft" ? "Pieds" : "Mètres"}
-              </span>
-              <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
-                {formatSpeed(100, settings.speedUnit).split(" ")[1]}
-              </span>
-              <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
-                Export {EXPORT_FORMAT_LABELS[settings.defaultExportFormat]}
-              </span>
-            </div>
-          </DashboardActionCard>
-        </div>
+        <FleetStatusWidget drones={drones} isLoading={dronesLoading} />
+        <FlightSettingsWidget settings={settings} />
       </div>
 
-      <FleetModal open={fleetOpen} onClose={() => setFleetOpen(false)} />
-      <SettingsModal open={settingsOpen} settings={settings} onClose={() => setSettingsOpen(false)} onSaved={setSettings} />
+      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">
+        <MissionsTimelineChart missions={allMissions?.data} isLoading={allMissionsLoading} />
+        <TechnicienWorkloadChart missions={allMissions?.data} members={members} isLoading={allMissionsLoading || membersLoading} />
+      </div>
     </div>
   );
 }

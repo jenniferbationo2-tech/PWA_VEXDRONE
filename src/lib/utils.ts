@@ -32,6 +32,20 @@ export function formatFileSize(bytes: number): string {
   return `${value.toFixed(1)} ${units[unitIndex]}`;
 }
 
+// Tri "plus récent en premier", appliqué une seule fois à la source (voir
+// api/client.ts) pour que toutes les listes/tableaux de l'app en héritent
+// automatiquement. `key` renvoie soit un ISO string (createdAt/detectedAt),
+// soit un id numérique — utilisé quand le backend n'expose aucun horodatage
+// de création (ex: PlatformUser) et qu'on approxime avec l'ordre des id.
+export function sortByNewestFirst<T>(items: T[], key: (item: T) => string | number): T[] {
+  return [...items].sort((a, b) => {
+    const ak = key(a);
+    const bk = key(b);
+    if (typeof ak === "number" && typeof bk === "number") return bk - ak;
+    return String(bk).localeCompare(String(ak));
+  });
+}
+
 export function formatRelativeTime(iso: string): string {
   const diffMs = Date.now() - new Date(iso).getTime();
   const minutes = Math.round(diffMs / 60000);

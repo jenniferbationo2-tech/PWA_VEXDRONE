@@ -20,6 +20,7 @@ export interface Drone {
   identifiant: string;
   modele: string;
   status: DroneStatus;
+  createdAt: string;
 }
 
 // Payload d'ajout d'un drone à la flotte — statut fixé à "disponible" par
@@ -105,10 +106,13 @@ export interface Mission {
   // du technicien propriétaire. Absent des payloads de création : la mission
   // appartient toujours à l'appelant, jamais choisi explicitement.
   userId?: string;
+  // Horodatage serveur — sert au tri "plus récent en premier" (voir
+  // sortByNewestFirst dans lib/utils.ts), jamais affiché tel quel.
+  createdAt: string;
 }
 
 // Payload envoyé à la création — l'id et le status sont calculés/attribués ailleurs
-export type NewMissionInput = Omit<Mission, "id" | "userId">;
+export type NewMissionInput = Omit<Mission, "id" | "userId" | "createdAt">;
 
 // Forme générique des listes paginées de l'API (voir PaginatedListResponse[T]
 // côté OpenAPI) — utilisé là où la pagination est réellement exploitée

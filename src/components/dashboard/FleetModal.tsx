@@ -4,22 +4,16 @@ import { Plane, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Badge, type BadgeProps } from "@/components/ui/badge";
+import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
+import { DRONE_STATUS_OPTIONS } from "@/lib/droneStatus";
 import type { Drone, DroneStatus } from "@/lib/api/types";
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
-
-const STATUS_OPTIONS: { value: DroneStatus; label: string; variant: NonNullable<BadgeProps["variant"]> }[] = [
-  { value: "disponible", label: "Disponible", variant: "success" },
-  { value: "en_vol", label: "En vol", variant: "active" },
-  { value: "maintenance", label: "Maintenance", variant: "pending" },
-  { value: "hors_service", label: "Hors service", variant: "high" },
-];
 
 export function FleetModal({ open, onClose }: Props) {
   const queryClient = useQueryClient();
@@ -112,7 +106,7 @@ export function FleetModal({ open, onClose }: Props) {
         ) : (
           <ul className="mb-5 space-y-1.5">
             {drones.map((drone) => {
-              const statusInfo = STATUS_OPTIONS.find((s) => s.value === drone.status)!;
+              const statusInfo = DRONE_STATUS_OPTIONS.find((s) => s.value === drone.status)!;
               return (
                 <li
                   key={drone.id}
@@ -131,7 +125,7 @@ export function FleetModal({ open, onClose }: Props) {
                       onChange={(e) => statusMutation.mutate({ id: drone.id, status: e.target.value as DroneStatus })}
                       className="h-8 rounded-sm border border-brand-gray/25 bg-white px-2 text-[12px] text-brand-blue-dark focus-visible:outline-none dark:border-white/15 dark:bg-white/5 dark:text-white"
                     >
-                      {STATUS_OPTIONS.map((s) => (
+                      {DRONE_STATUS_OPTIONS.map((s) => (
                         <option key={s.value} value={s.value}>
                           {s.label}
                         </option>

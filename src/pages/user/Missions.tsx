@@ -63,6 +63,7 @@ export function Missions() {
     },
     onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
       queryClient.invalidateQueries({ queryKey: ["active-flight"] });
       addNotification({
         title: "Mission lancée",
@@ -75,6 +76,7 @@ export function Missions() {
     // "Aucun vol en cours" sans aucun indice de ce qui s'est passe.
     onError: (err) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
       addNotification({
         title: "Lancement incomplet",
         message: err instanceof Error ? err.message : "Le vol n'a pas pu démarrer. Réessaie depuis Missions.",
@@ -113,6 +115,10 @@ export function Missions() {
       await api.createMission(input);
     }
     queryClient.invalidateQueries({ queryKey: ["missions"] });
+    // La table Missions de l'Admin (vue entreprise) partage les mêmes
+    // données côté backend mais une queryKey distincte — sans ça, une
+    // mission créée/modifiée ici n'apparaît côté Admin qu'après un reload.
+    queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
   }
 
   async function handleConfirmDelete() {
@@ -121,6 +127,7 @@ export function Missions() {
     try {
       await api.deleteMission(deleteTarget.id);
       queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
       setDeleteTarget(null);
     } catch {
       // en cas d'échec, on laisse la popup ouverte pour réessayer

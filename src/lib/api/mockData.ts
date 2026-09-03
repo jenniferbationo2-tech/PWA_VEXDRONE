@@ -1,9 +1,9 @@
 import type { Anomaly, DashboardSummary, Drone, Entreprise, Flight, Mission, PlatformUser, Report } from "./types";
 
 export const mockDrones: Drone[] = [
-  { id: "d-1", identifiant: "DRONE-01", modele: "DJI Mavic 3T", status: "disponible" },
-  { id: "d-2", identifiant: "DRONE-02", modele: "DJI Mavic 3T", status: "disponible" },
-  { id: "d-3", identifiant: "DRONE-03", modele: "DJI Matrice 30T", status: "maintenance" },
+  { id: "d-1", identifiant: "DRONE-01", modele: "DJI Mavic 3T", status: "disponible", createdAt: "2026-01-15T09:00:00Z" },
+  { id: "d-2", identifiant: "DRONE-02", modele: "DJI Mavic 3T", status: "disponible", createdAt: "2026-02-20T09:00:00Z" },
+  { id: "d-3", identifiant: "DRONE-03", modele: "DJI Matrice 30T", status: "maintenance", createdAt: "2026-07-10T09:00:00Z" },
 ];
 
 export const mockEntreprises: Entreprise[] = [
@@ -91,6 +91,7 @@ export const mockMissions: Mission[] = [
     appareil: "drone",
     droneId: "d-1",
     userId: "u-2",
+    createdAt: "2026-03-05T08:00:00Z",
   },
   {
     id: "m-2",
@@ -103,6 +104,7 @@ export const mockMissions: Mission[] = [
     appareil: "drone",
     droneId: "d-2",
     userId: "u-2",
+    createdAt: "2026-07-20T08:00:00Z",
   },
   {
     id: "m-3",
@@ -114,6 +116,7 @@ export const mockMissions: Mission[] = [
     status: "en_attente",
     appareil: "appareil_photo",
     userId: "u-10",
+    createdAt: "2026-08-15T08:00:00Z",
   },
   {
     id: "m-4",
@@ -125,6 +128,7 @@ export const mockMissions: Mission[] = [
     status: "terminee",
     appareil: "appareil_photo",
     userId: "u-11",
+    createdAt: "2026-05-28T08:00:00Z",
   },
   {
     id: "m-5",
@@ -137,6 +141,7 @@ export const mockMissions: Mission[] = [
     appareil: "drone",
     droneId: "d-3",
     userId: "u-11",
+    createdAt: "2026-08-01T08:00:00Z",
   },
 ];
 

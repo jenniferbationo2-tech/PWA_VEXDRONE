@@ -117,6 +117,11 @@ export function Vols() {
       setConfirmEnd(false);
       queryClient.invalidateQueries({ queryKey: ["active-flight"] });
       queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
+      // Un rapport = une mission terminee (voir toReport dans mappers.ts) :
+      // sans cette invalidation, Rapports.tsx ne montre le nouveau rapport
+      // qu'apres un reload manuel de la page.
+      queryClient.invalidateQueries({ queryKey: ["reports"] });
       addNotification({ title: "Mission terminée", message: "Le vol a été clôturé." });
     },
   });

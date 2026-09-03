@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ClipboardList } from "lucide-react";
 import { api } from "@/lib/api/client";
@@ -26,15 +26,32 @@ export function AdminMissions() {
   const { data: members } = useQuery({ queryKey: ["team-members"], queryFn: api.getTeamMembers });
   const technicienName = (userId?: string) => members?.find((m) => m.id === userId)?.name ?? "—";
 
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["entreprise-missions", filter, page],
-    queryFn: () =>
-      api.getEntrepriseMissions({
-        status: filter === "toutes" ? undefined : filter,
-        page,
-        itemsPerPage: ITEMS_PER_PAGE,
-      }),
+  // Chargée en une fois (comme les autres listes admin) plutôt que paginée
+  // côté serveur : l'API n'a aucun paramètre de tri, donc la page 1 d'une
+  // vraie pagination serveur n'aurait aucune garantie de contenir la mission
+  // la plus récente. Ici on trie/filtre/pagine en mémoire — même queryKey que
+  // le graphique "Missions dans le temps" du dashboard Admin, donc le cache
+  // est partagé entre les deux écrans.
+  const { data: allMissions, isLoading, isError } = useQuery({
+    queryKey: ["entreprise-missions", "all"],
+    queryFn: () => api.getEntrepriseMissions({ itemsPerPage: 100 }),
   });
+
+  const filtered = useMemo(() => {
+    const missions = allMissions?.data ?? [];
+    return filter === "toutes" ? missions : missions.filter((m) => m.status === filter);
+  }, [allMissions, filter]);
+
+  const data = useMemo(() => {
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    return {
+      data: filtered.slice(start, start + ITEMS_PER_PAGE),
+      totalCount: filtered.length,
+      hasMore: start + ITEMS_PER_PAGE < filtered.length,
+      page,
+      itemsPerPage: ITEMS_PER_PAGE,
+    };
+  }, [filtered, page]);
 
   function handleFilterChange(value: MissionStatus | "toutes") {
     setFilter(value);
@@ -64,7 +81,7 @@ export function AdminMissions() {
 
       {isLoading ? (
         <TableSkeleton columns={5} />
-      ) : isError || !data ? (
+      ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card dark:border-white/10 dark:bg-brand-blue-dark">
           <p className="font-semibold text-brand-blue-dark dark:text-white">Impossible de charger les missions</p>
         </div>

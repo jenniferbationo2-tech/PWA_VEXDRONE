@@ -96,6 +96,7 @@ export function toMission(raw: BackendMission): Mission {
     appareil: raw.appareil,
     droneId: raw.drone_uuid ?? undefined,
     userId: String(raw.user_id),
+    createdAt: raw.created_at,
   };
 }
 
@@ -105,6 +106,7 @@ export function toDrone(raw: BackendDrone): Drone {
     identifiant: raw.identifiant,
     modele: raw.modele ?? "",
     status: raw.statut,
+    createdAt: raw.created_at,
   };
 }
 

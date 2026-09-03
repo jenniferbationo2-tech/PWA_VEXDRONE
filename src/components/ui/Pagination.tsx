@@ -9,9 +9,10 @@ interface Props {
   onPageChange: (page: number) => void;
 }
 
-// Pagination générique pour les listes où le backend renvoie une vraie
-// page/total_count/has_more (contrairement au reste du POC, qui charge tout
-// d'un coup avec un items_per_page large) — voir GET /missions/entreprise.
+// Pagination générique — page/itemsPerPage/totalCount/hasMore peuvent venir
+// du backend ou être calculés côté client (voir admin/Missions.tsx : la liste
+// est chargée en une fois puis triée/paginée en mémoire, faute de paramètre
+// de tri côté API — le composant ne fait aucune hypothèse sur la source).
 export function Pagination({ page, itemsPerPage, totalCount, hasMore, onPageChange }: Props) {
   if (totalCount === 0) return null;
 
