@@ -202,7 +202,17 @@ async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
   const raw = await apiFetch<{ data: BackendAnomaly[] }>(`/api/v1/anomalies/?items_per_page=${itemsPerPage}`);
   const imageUuids = [...new Set(raw.data.map((a) => a.image_uuid))];
   const images = await Promise.all(
-    imageUuids.map((uuid) => apiFetch<BackendImage>(`/api/v1/images/${uuid}`).catch(() => null))
+    imageUuids.map((uuid) =>
+      apiFetch<BackendImage>(`/api/v1/images/${uuid}`).catch((err) => {
+        // Avale l'echec (une image cassee ne doit pas faire planter toute la
+        // liste d'anomalies) mais logue-le : sans ca, une anomalie orpheline
+        // (image_uuid invalide, 404, ...) retombe silencieusement sur
+        // l'affichage par defaut ("Image indisponible", GPS 0,0000/0,0000)
+        // sans aucune trace pour distinguer une vraie absence d'un bug.
+        console.error(`Image ${uuid} introuvable pour une anomalie liee :`, err);
+        return null;
+      })
+    )
   );
   const imageByUuid = new Map(images.filter((i): i is BackendImage => i !== null).map((i) => [i.uuid, i]));
   return sortByNewestFirst(raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid))), (a) => a.detectedAt);
@@ -536,8 +546,9 @@ export const api = {
   // date_capture peut manquer si pas d'EXIF). Renvoie toute la mission (pas
   // juste les dernieres) : sert a la fois a la galerie "Images captees en
   // direct" (Vols.tsx, tronquee cote appelant) et au comptage de verification
-  // IA (useAnalysisVerification.ts) — items_per_page large pour couvrir une
-  // mission complete, pas seulement les 8 dernieres captures.
+  // IA (useAnalysisVerification.ts) — items_per_page a 100 (max accepte par
+  // le backend, voir les autres endpoints /missions/, /reports/, /users/...
+  // qui plafonnent tous a 100 ; 200 renvoyait un 422 systematique).
   getMissionImages: async (missionId: string): Promise<MissionImage[]> => {
     if (USE_MOCKS) {
       // Simule une progression realiste : les images les plus recentes
