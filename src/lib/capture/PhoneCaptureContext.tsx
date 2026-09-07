@@ -26,6 +26,12 @@ interface PhoneCaptureContextType {
   // échec silencieux passer inaperçu jusqu'à la fin du vol.
   lastCaptureAt: number | null;
   consecutiveFailures: number;
+  // Coupe la capture immediatement, cote client, sans attendre le round-trip
+  // reseau de endFlight/updateMission ni le prochain refetch de
+  // ["active-flight"] — sinon la boucle (son propre setTimeout, independant
+  // de React Query) peut encore declencher 1-2 captures pendant ce delai. A
+  // appeler des le clic sur "Terminer", avant meme d'attendre la mutation.
+  stopCaptureNow: () => void;
 }
 
 const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
@@ -34,6 +40,7 @@ const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
   stream: null,
   lastCaptureAt: null,
   consecutiveFailures: 0,
+  stopCaptureNow: () => {},
 });
 
 export function usePhoneCapture() {
@@ -92,6 +99,11 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlightIdRef = useRef<string | null>(null);
   const imagesCapturedRef = useRef(0);
+  // Vol arrete manuellement (bouton "Terminer") : tant que ["active-flight"]
+  // n'a pas rattrape ce changement (peut prendre plusieurs secondes si le
+  // backend est lent a repondre), le flight en cache reste "en_cours" — sans
+  // ce garde-fou, l'effet ci-dessous relancerait la capture sur ce meme vol.
+  const manuallyStoppedFlightIdRef = useRef<string | null>(null);
   // Garde-fou pour n'envoyer l'alerte qu'une fois par série d'échecs, pas à
   // chaque nouvel échec au-delà du seuil.
   const alertedRef = useRef(false);
@@ -268,6 +280,11 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     setStream(null);
   }
 
+  function stopCaptureNow() {
+    if (activeFlightIdRef.current) manuallyStoppedFlightIdRef.current = activeFlightIdRef.current;
+    stop();
+  }
+
   useEffect(() => {
     if (!flight || isError || !missions) {
       if (activeFlightIdRef.current) stop();
@@ -279,7 +296,9 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     // indisponible) : on retombe sur l'ancien comportement, streaming par
     // défaut pour une mission téléphone.
     const isUploadMode = mission ? getCaptureMode(mission.id) === "differe" : false;
-    const shouldCapture = mission?.appareil === "appareil_photo" && flight.status === "en_cours" && !isUploadMode;
+    const wasManuallyStopped = flight.id === manuallyStoppedFlightIdRef.current;
+    const shouldCapture =
+      mission?.appareil === "appareil_photo" && flight.status === "en_cours" && !isUploadMode && !wasManuallyStopped;
 
     if (shouldCapture && mission && activeFlightIdRef.current !== flight.id) {
       start(mission.id, flight.id, flight.imagesCaptured);
@@ -293,7 +312,9 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   useEffect(() => stop, []);
 
   return (
-    <PhoneCaptureContext.Provider value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures }}>
+    <PhoneCaptureContext.Provider
+      value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow }}
+    >
       {children}
       <video ref={videoRef} className="hidden" muted playsInline />
     </PhoneCaptureContext.Provider>

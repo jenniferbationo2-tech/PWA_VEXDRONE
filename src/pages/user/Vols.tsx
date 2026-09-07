@@ -35,7 +35,8 @@ export function Vols() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures } = usePhoneCapture();
+  const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow } =
+    usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
@@ -101,6 +102,11 @@ export function Vols() {
       if (!flight) return;
       const mission = missions?.find((m) => m.id === flight.missionId);
       if (!mission) throw new Error("Mission introuvable");
+      // Coupe la capture en direct tout de suite, avant le moindre appel
+      // reseau : sinon la boucle de capture (son propre timer, independant
+      // de cette mutation) peut encore uploader 1-2 photos pendant que
+      // endFlight/updateMission sont en vol (voir PhoneCaptureContext.tsx).
+      stopCaptureNow();
       await api.endFlight(flight.id);
       await api.updateMission(mission.id, {
         name: mission.name,
