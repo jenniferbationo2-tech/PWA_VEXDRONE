@@ -24,7 +24,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
-import { getAdminSettings } from "@/lib/adminSettings";
+import { useAuth } from "@/lib/Auth/AuthContext";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -36,7 +36,18 @@ export function Vols() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
-  const [settings] = useState(() => getAdminSettings());
+  const { user } = useAuth();
+  // Seuils definis par l'Admin/Superadmin de l'entreprise, desormais partages
+  // via l'API (voir client.ts) au lieu du localStorage — c'etait la cause du
+  // bug d'origine : deux techniciens du meme vol voyaient des seuils
+  // differents selon les reglages sauvegardes sur leur propre appareil.
+  // Defaut le temps du chargement (ou entreprise_id absent) : mêmes valeurs
+  // que l'ancien DEFAULT_ADMIN_SETTINGS, pour ne rien casser en attendant.
+  const { data: settings = { defaultMaxAltitudeMeters: 120, lowBatteryThresholdPercent: 20 } } = useQuery({
+    queryKey: ["entreprise-settings", user?.entreprise_id],
+    queryFn: () => api.getEntrepriseSettings(user!.entreprise_id!),
+    enabled: !!user?.entreprise_id,
+  });
   const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow } =
     usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);

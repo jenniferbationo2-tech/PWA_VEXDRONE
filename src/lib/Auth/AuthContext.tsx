@@ -23,6 +23,9 @@ export interface User {
   email?: string;
   role?: string;
   avatarUrl?: string;
+  // Deja renvoye par /users/me (passe tel quel par getMe, voir auth.ts) mais
+  // jamais type jusqu'ici — necessaire pour GET /entreprises/{uuid}/settings.
+  entreprise_id?: string;
 }
 
 interface AuthContextType {

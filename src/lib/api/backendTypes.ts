@@ -102,6 +102,20 @@ export interface BackendEntreprise {
   updated_at: string | null;
 }
 
+// GET/PATCH /entreprises/{uuid}/settings — contrat backend du 2026-09-03.
+export interface BackendEntrepriseSettings {
+  uuid: string;
+  entreprise_uuid: string;
+  unite_altitude: "m" | "ft";
+  unite_vitesse: "kmh" | "kt";
+  fuseau_horaire: string;
+  format_export_defaut: "pdf" | "csv" | "kml";
+  altitude_vol_max_defaut: number;
+  seuil_batterie_faible: number;
+  created_at: string;
+  updated_at: string | null;
+}
+
 // UserRead (GET /users/, superadmin) — pas UserMeRead, forme différente
 // (voir lib/Auth/AuthContext.tsx pour le profil du user courant).
 export interface BackendPlatformUser {

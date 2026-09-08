@@ -47,6 +47,7 @@ import type {
   BackendDashboardStats,
   BackendDrone,
   BackendEntreprise,
+  BackendEntrepriseSettings,
   BackendImage,
   BackendMission,
   BackendPlatformUser,
@@ -694,6 +695,24 @@ export const api = {
         connexion_drone: patch.connection,
       }),
     });
+  },
+
+  // Seuils de vol utilises en direct sur /vols (alerte altitude/batterie) —
+  // accessible Technicien/Admin/Superadmin (contrat backend du 2026-09-03).
+  // Remplace l'ancien getAdminSettings() en localStorage, qui divergeait
+  // d'un technicien a l'autre (chacun voyait ses propres seuils sauvegardes
+  // sur son appareil). Seuls les deux champs utilises par Vols.tsx sont
+  // exposes ici ; le reste des reglages (unites, export, timezone) n'est pas
+  // touche par cette migration.
+  getEntrepriseSettings: async (
+    entrepriseUuid: string
+  ): Promise<{ defaultMaxAltitudeMeters: number; lowBatteryThresholdPercent: number }> => {
+    if (USE_MOCKS) return delay({ defaultMaxAltitudeMeters: 120, lowBatteryThresholdPercent: 20 }, 150);
+    const raw = await apiFetch<BackendEntrepriseSettings>(`/api/v1/entreprises/${entrepriseUuid}/settings`);
+    return {
+      defaultMaxAltitudeMeters: raw.altitude_vol_max_defaut,
+      lowBatteryThresholdPercent: raw.seuil_batterie_faible,
+    };
   },
 
   // ---- Réservé SUPERADMIN ----
