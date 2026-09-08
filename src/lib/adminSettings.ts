@@ -18,6 +18,12 @@ export interface AdminSettings {
   // Toujours stockée en mètres en interne ; convertie à l'affichage selon
   // altitudeUnit (voir formatAltitude) pour ne pas dupliquer la valeur.
   defaultMaxAltitudeMeters: number;
+  // Seuil (%) sous lequel la batterie est signalée comme faible pendant un
+  // vol actif (Vols.tsx) — remplace l'ancien seuil de 20% codé en dur.
+  lowBatteryThresholdPercent: number;
+  // Toujours stockée en km/h en interne ; convertie à l'affichage selon
+  // speedUnit (voir formatSpeed) pour ne pas dupliquer la valeur.
+  defaultMaxSpeedKmh: number;
 }
 
 export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
@@ -26,6 +32,8 @@ export const DEFAULT_ADMIN_SETTINGS: AdminSettings = {
   timezone: "UTC",
   defaultExportFormat: "pdf",
   defaultMaxAltitudeMeters: 120,
+  lowBatteryThresholdPercent: 20,
+  defaultMaxSpeedKmh: 50,
 };
 
 const STORAGE_KEY = "vexdrone_admin_settings";
@@ -60,9 +68,16 @@ export function formatAltitude(meters: number, unit: AltitudeUnit): string {
 
 const KMH_PER_KNOT = 1.852;
 
+export function kmhToDisplaySpeed(kmh: number, unit: SpeedUnit): number {
+  return unit === "kt" ? Math.round(kmh / KMH_PER_KNOT) : Math.round(kmh);
+}
+
+export function displaySpeedToKmh(value: number, unit: SpeedUnit): number {
+  return unit === "kt" ? Math.round(value * KMH_PER_KNOT) : Math.round(value);
+}
+
 export function formatSpeed(kmh: number, unit: SpeedUnit): string {
-  const value = unit === "kt" ? Math.round(kmh / KMH_PER_KNOT) : Math.round(kmh);
-  return `${value} ${unit === "kt" ? "kt" : "km/h"}`;
+  return `${kmhToDisplaySpeed(kmh, unit)} ${unit === "kt" ? "kt" : "km/h"}`;
 }
 
 export const TIMEZONE_OPTIONS = [

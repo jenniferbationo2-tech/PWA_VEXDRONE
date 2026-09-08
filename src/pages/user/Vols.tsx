@@ -24,6 +24,7 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
+import { getAdminSettings } from "@/lib/adminSettings";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -35,6 +36,7 @@ export function Vols() {
   const queryClient = useQueryClient();
   const { addNotification } = useNotifications();
   const [confirmEnd, setConfirmEnd] = useState(false);
+  const [settings] = useState(() => getAdminSettings());
   const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow } =
     usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
@@ -191,6 +193,11 @@ export function Vols() {
 
   const currentStepIndex = STEPS.findIndex((s) => s.value === flight.status);
   const connected = flight.droneConnection !== "hors_ligne";
+  // Réglages de vol définis par le SuperAdmin (voir adminSettings.ts) —
+  // vérifiés ici contre la télémétrie live, pas juste affichés en badge sur
+  // le dashboard.
+  const altitudeExceeded = !isPhoneMission && flight.altitude > settings.defaultMaxAltitudeMeters;
+  const batteryLow = flight.battery < settings.lowBatteryThresholdPercent;
 
   return (
     <div>
@@ -269,7 +276,14 @@ export function Vols() {
           {!isPhoneMission && (
             <div>
               <div className="text-[13px] text-brand-gray">Altitude</div>
-              <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">{flight.altitude} m</div>
+              <div
+                className={cn(
+                  "mt-1 font-display text-[26px] font-bold",
+                  altitudeExceeded ? "text-brand-orange" : "text-brand-blue-dark"
+                )}
+              >
+                {flight.altitude} m
+              </div>
             </div>
           )}
           <div>
@@ -277,7 +291,7 @@ export function Vols() {
             <div
               className={cn(
                 "mt-1 font-display text-[26px] font-bold",
-                flight.battery < 20 ? "text-brand-orange" : "text-brand-blue-dark"
+                batteryLow ? "text-brand-orange" : "text-brand-blue-dark"
               )}
             >
               {flight.battery}%
@@ -315,6 +329,18 @@ export function Vols() {
       </div>
 
       <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
+        {altitudeExceeded && (
+          <Badge variant="high">
+            <AlertTriangle size={12} />
+            Altitude au-dessus du max autorisé ({flight.altitude} m / {settings.defaultMaxAltitudeMeters} m)
+          </Badge>
+        )}
+        {batteryLow && (
+          <Badge variant="high">
+            <AlertTriangle size={12} />
+            Batterie faible ({flight.battery}% / seuil {settings.lowBatteryThresholdPercent}%)
+          </Badge>
+        )}
         {verification.counts.total === 0 ? (
           <span className="text-[13px] text-brand-gray">Aucune image capturée pour l'instant.</span>
         ) : (

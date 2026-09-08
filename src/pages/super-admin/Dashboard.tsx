@@ -104,10 +104,13 @@ export function SuperAdminDashboard() {
               {settings.altitudeUnit === "ft" ? "Pieds" : "Mètres"}
             </span>
             <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
-              {formatSpeed(100, settings.speedUnit).split(" ")[1]}
+              Vitesse max {formatSpeed(settings.defaultMaxSpeedKmh, settings.speedUnit)}
             </span>
             <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
               Export {EXPORT_FORMAT_LABELS[settings.defaultExportFormat]}
+            </span>
+            <span className="rounded-full bg-brand-off-white px-2.5 py-1 text-brand-blue-dark dark:bg-white/10 dark:text-white/80">
+              Batterie faible &lt; {settings.lowBatteryThresholdPercent}%
             </span>
           </div>
         </DashboardActionCard>

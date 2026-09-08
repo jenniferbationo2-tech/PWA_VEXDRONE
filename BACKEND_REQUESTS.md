@@ -15,10 +15,10 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 
 ## 2. Aucune persistance pour les préférences/réglages d'entreprise
 
-**Endpoints concernés** : aucun — vérifié sur `EntrepriseCreate`, `EntrepriseUpdate`, `EntrepriseRead`, `UserUpdate` : aucun champ de préférence n'existe nulle part dans le schéma, ni endpoint générique de settings.
-**Constaté (2026-08-31)** : besoins identifiés côté UI Admin — unité de mesure (altitude m/ft, vitesse km/h/kt), fuseau horaire d'affichage, format d'export par défaut des rapports (PDF/CSV/KML), altitude de vol max par défaut.
-**Impact frontend** : en l'absence de tout champ backend, ces réglages sont implémentés en local uniquement (`localStorage`, par navigateur/appareil) pour cette itération — non synchronisés entre appareils, non partagés entre les comptes Admin d'une même entreprise.
-**Proposition** : une ressource `EntrepriseSettings` (ou des champs additionnels sur `Entreprise`) exposant `unite_altitude` (`m`/`ft`), `unite_vitesse` (`kmh`/`kt`), `fuseau_horaire`, `format_export_defaut` (`pdf`/`csv`/`kml`), `altitude_vol_max_defaut`, avec `GET`/`PATCH` réservés à ADMIN de l'entreprise concernée.
+**Endpoints concernés** : aucun — reconfirmé le 2026-09-08 sur `EntrepriseCreate`, `EntrepriseUpdate`, `EntrepriseRead`, `UserUpdate` : aucun champ de préférence n'existe nulle part dans le schéma, ni endpoint générique de settings.
+**Constaté (2026-08-31, champs étendus le 2026-09-08)** : besoins identifiés côté UI Admin/SuperAdmin — unité de mesure (altitude m/ft, vitesse km/h/kt), fuseau horaire d'affichage, format d'export par défaut des rapports (PDF/CSV/KML), altitude de vol max par défaut, seuil de batterie faible (%).
+**Impact frontend** : en l'absence de tout champ backend, ces réglages sont implémentés en local uniquement (`localStorage`, par navigateur/appareil) pour cette itération — non synchronisés entre appareils, non partagés entre les comptes Admin d'une même entreprise. Depuis le 2026-09-08, l'altitude max et le seuil de batterie faible ne sont plus de simples badges d'affichage : ils sont vérifiés en direct contre la télémétrie du vol actif (`Vols.tsx`) et déclenchent une alerte visuelle si dépassés — ce qui rend d'autant plus nécessaire une vraie synchronisation par entreprise (un Admin doit voir/gérer le même seuil que ses techniciens sur le terrain, pas un seuil différent par appareil).
+**Proposition** : une ressource `EntrepriseSettings` (ou des champs additionnels sur `Entreprise`) exposant `unite_altitude` (`m`/`ft`), `unite_vitesse` (`kmh`/`kt`), `fuseau_horaire`, `format_export_defaut` (`pdf`/`csv`/`kml`), `altitude_vol_max_defaut`, `seuil_batterie_faible` (`int`, %), avec `GET`/`PATCH` réservés à ADMIN de l'entreprise concernée (lecture seule pour ses techniciens, écriture pour SuperAdmin possible aussi selon le workflow actuel côté UI).
 
 ## 3. Pas de géofencing / zones no-fly
 

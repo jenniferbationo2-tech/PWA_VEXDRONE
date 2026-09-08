@@ -4,8 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { StatCard } from "@/components/user/dashboard/StatCard";
 import { StatGridSkeleton } from "@/components/ui/StatGridSkeleton";
 import { WeatherCard } from "@/components/dashboard/WeatherCard";
-import { FleetStatusWidget } from "@/components/admin/dashboard/FleetStatusWidget";
-import { FlightSettingsWidget } from "@/components/admin/dashboard/FlightSettingsWidget";
+import { FlightLimitsCard } from "@/components/admin/dashboard/FlightLimitsCard";
 import { MissionsTimelineChart } from "@/components/admin/dashboard/MissionsTimelineChart";
 import { TechnicienWorkloadChart } from "@/components/admin/dashboard/TechnicienWorkloadChart";
 import { api } from "@/lib/api/client";
@@ -45,7 +44,10 @@ export function AdminDashboard() {
           <h1>Espace Admin</h1>
           <p className="mt-2 text-brand-gray dark:text-white/60">Bienvenue, {displayName}.</p>
         </div>
-        <WeatherCard />
+        <div className="flex flex-col gap-3">
+          <FlightLimitsCard settings={settings} />
+          <WeatherCard />
+        </div>
       </div>
 
       <div className="mt-6">
@@ -63,11 +65,6 @@ export function AdminDashboard() {
             />
           </div>
         )}
-      </div>
-
-      <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <FleetStatusWidget drones={drones} isLoading={dronesLoading} />
-        <FlightSettingsWidget settings={settings} />
       </div>
 
       <div className="mt-6 grid grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-5">

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
   displayAltitudeToMeters,
+  displaySpeedToKmh,
+  kmhToDisplaySpeed,
   metersToDisplayAltitude,
   saveAdminSettings,
   TIMEZONE_OPTIONS,
@@ -32,6 +34,8 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
   const [maxAltitude, setMaxAltitude] = useState(
     String(metersToDisplayAltitude(settings.defaultMaxAltitudeMeters, settings.altitudeUnit))
   );
+  const [lowBatteryThreshold, setLowBatteryThreshold] = useState(String(settings.lowBatteryThresholdPercent));
+  const [maxSpeed, setMaxSpeed] = useState(String(kmhToDisplaySpeed(settings.defaultMaxSpeedKmh, settings.speedUnit)));
 
   useEffect(() => {
     if (open) {
@@ -40,6 +44,8 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
       setTimezone(settings.timezone);
       setExportFormat(settings.defaultExportFormat);
       setMaxAltitude(String(metersToDisplayAltitude(settings.defaultMaxAltitudeMeters, settings.altitudeUnit)));
+      setLowBatteryThreshold(String(settings.lowBatteryThresholdPercent));
+      setMaxSpeed(String(kmhToDisplaySpeed(settings.defaultMaxSpeedKmh, settings.speedUnit)));
     }
   }, [open, settings]);
 
@@ -53,6 +59,12 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
     setMaxAltitude(String(metersToDisplayAltitude(meters, unit)));
   }
 
+  function handleSpeedUnitChange(unit: SpeedUnit) {
+    const kmh = displaySpeedToKmh(Number(maxSpeed) || 0, speedUnit);
+    setSpeedUnit(unit);
+    setMaxSpeed(String(kmhToDisplaySpeed(kmh, unit)));
+  }
+
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const next: AdminSettings = {
@@ -61,6 +73,8 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
       timezone,
       defaultExportFormat: exportFormat,
       defaultMaxAltitudeMeters: displayAltitudeToMeters(Number(maxAltitude) || 0, altitudeUnit),
+      lowBatteryThresholdPercent: Math.min(100, Math.max(0, Number(lowBatteryThreshold) || 0)),
+      defaultMaxSpeedKmh: displaySpeedToKmh(Number(maxSpeed) || 0, speedUnit),
     };
     saveAdminSettings(next);
     onSaved(next);
@@ -104,7 +118,11 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
               <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
                 Unité de vitesse
               </label>
-              <select value={speedUnit} onChange={(e) => setSpeedUnit(e.target.value as SpeedUnit)} className={SELECT_CLASS}>
+              <select
+                value={speedUnit}
+                onChange={(e) => handleSpeedUnitChange(e.target.value as SpeedUnit)}
+                className={SELECT_CLASS}
+              >
                 <option value="kmh">km/h</option>
                 <option value="kt">Nœuds (kt)</option>
               </select>
@@ -141,16 +159,37 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
             </select>
           </div>
 
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Altitude de vol max par défaut ({altitudeUnit})
+              </label>
+              <Input
+                type="number"
+                min={0}
+                value={maxAltitude}
+                onChange={(e) => setMaxAltitude(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Seuil batterie faible (%)
+              </label>
+              <Input
+                type="number"
+                min={0}
+                max={100}
+                value={lowBatteryThreshold}
+                onChange={(e) => setLowBatteryThreshold(e.target.value)}
+              />
+            </div>
+          </div>
+
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-              Altitude de vol max par défaut ({altitudeUnit})
+              Vitesse de vol max autorisée ({speedUnit === "kt" ? "kt" : "km/h"})
             </label>
-            <Input
-              type="number"
-              min={0}
-              value={maxAltitude}
-              onChange={(e) => setMaxAltitude(e.target.value)}
-            />
+            <Input type="number" min={0} value={maxSpeed} onChange={(e) => setMaxSpeed(e.target.value)} />
           </div>
 
           <div className="flex justify-end gap-2.5 pt-2">
