@@ -45,8 +45,8 @@ export function SeverityDonut({ data }: Props) {
             </PieChart>
           </ResponsiveContainer>
           <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
-            <span className="font-display text-[26px] font-bold text-brand-blue-dark">{total}</span>
-            <span className="text-[11px] text-brand-gray">total</span>
+            <span className="font-display text-[26px] font-bold text-brand-blue-dark dark:text-white">{total}</span>
+            <span className="text-[11px] text-brand-gray dark:text-white/60">total</span>
           </div>
         </div>
         <div className="space-y-2.5">
@@ -56,8 +56,8 @@ export function SeverityDonut({ data }: Props) {
                 className="h-2.5 w-2.5 rounded-full"
                 style={{ backgroundColor: SEVERITY_COLOR[d.severity] }}
               />
-              <span className="text-brand-blue-dark/80">{SEVERITY_LABEL[d.severity]}</span>
-              <span className="font-semibold text-brand-blue-dark">{d.count}</span>
+              <span className="text-brand-blue-dark/80 dark:text-white/80">{SEVERITY_LABEL[d.severity]}</span>
+              <span className="font-semibold text-brand-blue-dark dark:text-white">{d.count}</span>
             </div>
           ))}
         </div>

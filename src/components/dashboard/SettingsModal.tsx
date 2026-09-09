@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import {
   displayAltitudeToMeters,
   displaySpeedToKmh,
@@ -49,8 +51,6 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
     }
   }, [open, settings]);
 
-  if (!open) return null;
-
   function handleAltitudeUnitChange(unit: AltitudeUnit) {
     // Convertit la valeur affichée pour rester cohérente avec la nouvelle unité,
     // plutôt que de garder le même nombre sous une unité différente.
@@ -82,8 +82,24 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl dark:bg-brand-blue-dark">
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
+          variants={overlayVariants}
+          initial="hidden"
+          animate="visible"
+          exit="hidden"
+          transition={overlayTransition}
+        >
+          <motion.div
+            className="w-full max-w-md rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={modalTransition}
+          >
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-display text-[18px] font-bold text-brand-blue-dark dark:text-white">
             Réglages de vol & export
@@ -201,7 +217,9 @@ export function SettingsModal({ open, settings, onClose, onSaved }: Props) {
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

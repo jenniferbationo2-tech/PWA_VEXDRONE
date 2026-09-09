@@ -74,6 +74,15 @@ export interface NewTeamMemberInput {
   password: string;
 }
 
+// Payload de mise à jour d'un technicien via PATCH /users/{username} (schéma
+// UserUpdate côté API — tous champs optionnels, on n'envoie que ceux édités
+// par l'UI) — l'API renvoie une forme non confirmée (voir client.ts), le
+// composant appelant relit la liste ensuite plutôt que de compter dessus.
+export interface UpdateTeamMemberInput {
+  name: string;
+  email: string;
+}
+
 export interface Anomaly {
   id: string;
   type: string;

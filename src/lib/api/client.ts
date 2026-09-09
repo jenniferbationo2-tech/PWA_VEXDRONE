@@ -15,6 +15,7 @@ import type {
   Paginated,
   PlatformUser,
   Report,
+  UpdateTeamMemberInput,
 } from "./types";
 import type { CaptureMode } from "@/lib/captureMode";
 import {
@@ -199,7 +200,14 @@ function userIdSortKey(user: PlatformUser): number {
   return Number(user.id.match(/\d+/)?.[0] ?? 0);
 }
 
-async function fetchAnomaliesWithImages(itemsPerPage = 20): Promise<Anomaly[]> {
+// 100 = max accepté par l'API (comme getMissionImages/getReports/getPlatformUsers).
+// Important ici en particulier : le backend n'expose aucun param de tri
+// (confirmé sur le schema live, cf. commentaire sur getEntrepriseMissions) —
+// avec le defaut precedent de 20, une fois plus de 20 anomalies accumulees
+// au total (courant sur ce backend de demo/test partage), la plus recente
+// pouvait tomber hors de la page recue et ne jamais s'afficher, y compris
+// pour la mission qu'on vient de lancer (voir currentMission.ts).
+async function fetchAnomaliesWithImages(itemsPerPage = 100): Promise<Anomaly[]> {
   const raw = await apiFetch<{ data: BackendAnomaly[] }>(`/api/v1/anomalies/?items_per_page=${itemsPerPage}`);
   const imageUuids = [...new Set(raw.data.map((a) => a.image_uuid))];
   const images = await Promise.all(
@@ -852,6 +860,22 @@ export const api = {
       return delay(undefined, 300);
     }
     await apiFetch<unknown>(`/api/v1/users/team/${username}`, { method: "DELETE" });
+  },
+
+  // PATCH /users/{username} (schéma UserUpdate, vérifié sur openapi.json le
+  // 2026-09-09) — accessible à un ADMIN pour n'importe quel compte, pas
+  // seulement /users/team. Forme de retour non confirmée (comme
+  // renameEntreprise) : le composant appelant relit la liste ensuite.
+  updateTeamMember: async (username: string, input: UpdateTeamMemberInput): Promise<void> => {
+    if (USE_MOCKS) {
+      const member = mockTeamMembers.find((m) => m.username === username);
+      if (member) {
+        member.name = input.name;
+        member.email = input.email;
+      }
+      return delay(undefined, 300);
+    }
+    await apiFetch<unknown>(`/api/v1/users/${username}`, { method: "PATCH", body: JSON.stringify(input) });
   },
 
   // Vue transverse des missions de toute l'entreprise (tous techniciens

@@ -3,6 +3,15 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+  /* Sans ça, les listes déroulantes natives (<select>, ex. "Mission" dans
+     Analyse média) restent rendues en clair par l'OS/le navigateur même
+     quand le reste du composant passe en mode sombre. */
+  .dark {
+    color-scheme: dark;
+  }
   body {
     @apply bg-brand-off-white text-brand-blue-dark font-body text-body dark:bg-brand-dark-bg dark:text-white;
   }

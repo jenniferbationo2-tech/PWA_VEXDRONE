@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { Loader2, UploadCloud, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { Mission } from "@/lib/api/types";
 import type { CaptureMode } from "@/lib/captureMode";
@@ -27,11 +29,25 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mission]);
 
-  if (!mission) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl dark:bg-brand-blue-dark">
+    <AnimatePresence>
+      {mission && (
+        <motion.div
+          className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
+          variants={overlayVariants}
+          initial="hidden"
+          animate="visible"
+          exit="hidden"
+          transition={overlayTransition}
+        >
+          <motion.div
+            className="w-full max-w-md rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={modalTransition}
+          >
         <h3 className="mb-1 font-display text-[16px] font-bold text-brand-blue-dark dark:text-white">
           Lancer "{mission.name}"
         </h3>
@@ -90,7 +106,9 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
             Lancer
           </Button>
         </div>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

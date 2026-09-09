@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { Plane, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
@@ -8,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { DRONE_STATUS_OPTIONS } from "@/lib/droneStatus";
+import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import type { Drone, DroneStatus } from "@/lib/api/types";
 
 interface Props {
@@ -55,8 +57,6 @@ export function FleetModal({ open, onClose }: Props) {
     },
   });
 
-  if (!open) return null;
-
   function handleAdd(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
@@ -68,8 +68,24 @@ export function FleetModal({ open, onClose }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-2xl dark:bg-brand-blue-dark">
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
+          variants={overlayVariants}
+          initial="hidden"
+          animate="visible"
+          exit="hidden"
+          transition={overlayTransition}
+        >
+          <motion.div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={modalTransition}
+          >
         <div className="mb-1 flex items-center justify-between">
           <h2 className="font-display text-[18px] font-bold text-brand-blue-dark dark:text-white">Flotte</h2>
           <button
@@ -165,18 +181,20 @@ export function FleetModal({ open, onClose }: Props) {
             </Button>
           </div>
         </form>
-      </div>
 
-      <ConfirmDialog
-        open={!!removeTarget}
-        title="Retirer ce drone"
-        description={`"${removeTarget?.identifiant}" sera retiré de la flotte. L'historique des missions déjà réalisées avec ce drone est conservé.`}
-        confirmLabel="Retirer"
-        loadingLabel="Retrait…"
-        onConfirm={() => removeTarget && removeMutation.mutate(removeTarget.id)}
-        onCancel={() => setRemoveTarget(null)}
-        isLoading={removeMutation.isPending}
-      />
-    </div>
+            <ConfirmDialog
+              open={!!removeTarget}
+              title="Retirer ce drone"
+              description={`"${removeTarget?.identifiant}" sera retiré de la flotte. L'historique des missions déjà réalisées avec ce drone est conservé.`}
+              confirmLabel="Retirer"
+              loadingLabel="Retrait…"
+              onConfirm={() => removeTarget && removeMutation.mutate(removeTarget.id)}
+              onCancel={() => setRemoveTarget(null)}
+              isLoading={removeMutation.isPending}
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

@@ -26,6 +26,13 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 **Impact frontend** : fonctionnalité mise de côté pour cette itération (sortie du périmètre de la page Admin V1) — nécessiterait de toute façon un vrai sous-projet (dessin de zones sur carte, format de stockage géospatial, vérification côté vol) plutôt qu'un simple champ de formulaire.
 **Proposition** : à chiffrer séparément avec le backend si la fonctionnalité est retenue pour une itération future (probablement PostGIS côté stockage, vu l'architecture déjà mentionnée pour le reste du projet).
 
+## 4. Pas de blocage/déblocage pour un technicien (UTILISATEUR)
+
+**Endpoints concernés** : `/api/v1/users/team/{username}`, `/api/v1/users/{username}`
+**Constaté (2026-09-09)** : contrairement aux entreprises (`POST /entreprises/{id}/bloquer` et `/debloquer`), aucun endpoint équivalent n'existe pour un utilisateur individuel. Seule une désactivation (soft-delete via `DELETE`) est disponible — même mécanisme que "retirer/supprimer".
+**Impact frontend** : la pop-up de détail d'un technicien (Admin > Techniciens) prévoit une icône Bloquer/Débloquer à côté du badge de statut ; elle est affichée mais désactivée ("Bientôt disponible") tant que ce endpoint n'existe pas, faute de pouvoir la distinguer proprement de l'action Supprimer.
+**Proposition** : `POST /users/team/{username}/bloquer` et `/debloquer` (même forme que pour les entreprises), avec un champ de statut sur `PlatformUser`/`UserRead` distinct de la suppression (ex. `is_blocked`), pour permettre une réactivation ultérieure — contrairement au soft-delete qui retire le compte de la liste.
+
 ---
 
 *(entrées suivantes ajoutées au fil de la construction des écrans Techniciens / Missions entreprise)*

@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { X, Smartphone, PlaneTakeoff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isPastDate } from "@/lib/missionStatus";
 import { api } from "@/lib/api/client";
+import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { CaptureDevice, Mission, NewMissionInput } from "@/lib/api/types";
 
@@ -64,8 +66,6 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
     setError(null);
   }, [open, mission]);
 
-  if (!open) return null;
-
   function resetAndClose() {
     setError(null);
     onClose();
@@ -123,20 +123,36 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-2xl">
+    <AnimatePresence>
+      {open && (
+        <motion.div
+          className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
+          variants={overlayVariants}
+          initial="hidden"
+          animate="visible"
+          exit="hidden"
+          transition={overlayTransition}
+        >
+          <motion.div
+            className="w-full max-w-md rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={modalTransition}
+          >
         <div className="mb-5 flex items-center justify-between">
-          <h2 className="font-display text-[18px] font-bold text-brand-blue-dark">
+          <h2 className="font-display text-[18px] font-bold text-white">
             {isEditMode ? "Modifier la mission" : "Nouvelle mission"}
           </h2>
-          <button onClick={resetAndClose} className="text-brand-gray hover:text-brand-blue-dark">
+          <button onClick={resetAndClose} className="text-white/60 hover:text-white">
             <X size={18} />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">
+            <label className="mb-1.5 block text-[13px] font-medium text-white">
               Méthode d'inspection
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -149,8 +165,8 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
                   className={cn(
                     "flex items-center justify-center gap-2 rounded-sm border px-3 py-2.5 text-[13px] font-semibold transition-colors",
                     appareil === value
-                      ? "border-brand-blue bg-brand-blue text-white"
-                      : "border-brand-gray/25 bg-white text-brand-blue-dark/70 hover:bg-brand-off-white",
+                      ? "border-white bg-white/10 text-white"
+                      : "border-white/15 bg-white/5 text-white/70 hover:bg-white/10",
                     isEditMode && "cursor-not-allowed opacity-60"
                   )}
                 >
@@ -160,7 +176,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
               ))}
             </div>
             {isEditMode && (
-              <p className="mt-1.5 text-[12px] text-brand-gray">
+              <p className="mt-1.5 text-[12px] text-white/50">
                 Fixée à la création de la mission, non modifiable ensuite.
               </p>
             )}
@@ -168,16 +184,16 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
 
           {!isEditMode && appareil === "drone" && (
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Drone</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">Drone</label>
               {availableDrones.length === 0 ? (
-                <p className="rounded-sm border border-brand-gray/25 bg-brand-off-white px-3 py-2.5 text-[13px] text-brand-gray">
+                <p className="rounded-sm border border-white/15 bg-white/5 px-3 py-2.5 text-[13px] text-white/60">
                   Aucun drone disponible actuellement.
                 </p>
               ) : (
                 <select
                   value={droneId}
                   onChange={(e) => setDroneId(e.target.value)}
-                  className="h-10 w-full rounded-sm border border-brand-gray/25 bg-white px-3 text-[14px] text-brand-blue-dark focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
+                  className="h-10 w-full rounded-sm border border-white/15 bg-white/5 px-3 text-[14px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
                 >
                   <option value="">Sélectionner un drone</option>
                   {availableDrones.map((d) => (
@@ -192,27 +208,27 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
           )}
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Nom de la mission</label>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">Nom de la mission</label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Inspection ligne Nord" />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Zone</label>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">Zone</label>
             <Input value={zone} onChange={(e) => setZone(e.target.value)} placeholder="Zone A" />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Description</label>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">Description</label>
             <Input value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Détails de la mission" />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Date de début</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">Date de début</label>
               <Input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark">Date de fin</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">Date de fin</label>
               <Input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
             </div>
           </div>
@@ -228,7 +244,9 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
             </Button>
           </div>
         </form>
-      </div>
-    </div>
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

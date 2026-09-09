@@ -156,7 +156,7 @@ export function Vols() {
           <Skeleton className="h-7 w-40 rounded-full" />
         </div>
 
-        <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+        <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
           <div className="mb-6 flex items-center gap-2">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex flex-1 items-center last:flex-none">
@@ -165,7 +165,7 @@ export function Vols() {
               </div>
             ))}
           </div>
-          <div className="grid grid-cols-3 divide-x divide-brand-blue/[0.06] text-center">
+          <div className="grid grid-cols-3 divide-x divide-brand-blue/[0.06] text-center dark:divide-white/10">
             {Array.from({ length: 3 }).map((_, i) => (
               <div key={i} className="flex flex-col items-center gap-2">
                 <Skeleton className="h-3 w-16" />
@@ -176,7 +176,7 @@ export function Vols() {
         </div>
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card lg:col-span-2">
+          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none lg:col-span-2">
             <Skeleton className="mb-4 h-4 w-40" />
             <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
               {Array.from({ length: 8 }).map((_, i) => (
@@ -184,7 +184,7 @@ export function Vols() {
               ))}
             </div>
           </div>
-          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
             <Skeleton className="mb-4 h-4 w-28" />
             <Skeleton className="h-[180px] w-full rounded-md" />
           </div>
@@ -197,7 +197,7 @@ export function Vols() {
     return (
       <div className="flex h-[50vh] flex-col items-center justify-center text-center">
         <p className="font-display text-h3">Aucun vol en cours</p>
-        <p className="mt-1 text-brand-gray">Lance une mission pour voir la télémétrie en direct ici.</p>
+        <p className="mt-1 text-brand-gray dark:text-white/60">Lance une mission pour voir la télémétrie en direct ici.</p>
       </div>
     );
   }
@@ -215,13 +215,13 @@ export function Vols() {
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>Vol en cours</h1>
-          <p className="mt-0.5 text-[14px] text-brand-gray">Mission : {missionName(flight.missionId)}</p>
+          <p className="mt-0.5 text-[14px] text-brand-gray dark:text-white/60">Mission : {missionName(flight.missionId)}</p>
         </div>
         <div className="flex items-center gap-2.5">
           <span
             className={cn(
               "flex items-center gap-1.5 whitespace-nowrap rounded-full px-3 py-1 text-[12px] font-semibold",
-              connected ? "bg-status-success/10 text-status-success" : "bg-brand-orange/10 text-brand-orange"
+              connected ? "bg-status-success/10 text-status-success dark:bg-status-success/20" : "bg-brand-orange/10 text-brand-orange"
             )}
           >
             {connected ? <Wifi size={12} /> : <WifiOff size={12} />}
@@ -251,7 +251,7 @@ export function Vols() {
         isLoading={endMutation.isPending}
       />
 
-      <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+      <div className="mb-5 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
         <div className="mb-6 flex items-center">
           {STEPS.map((step, i) => (
             <div key={step.value} className="flex flex-1 items-center last:flex-none">
@@ -259,20 +259,20 @@ export function Vols() {
                 <div
                   className={cn(
                     "h-3 w-3 rounded-full",
-                    i <= currentStepIndex ? "bg-brand-blue" : "bg-brand-gray/25"
+                    i <= currentStepIndex ? "bg-brand-blue dark:bg-white" : "bg-brand-gray/25 dark:bg-white/15"
                   )}
                 />
                 <span
                   className={cn(
                     "text-[12px] font-medium",
-                    i === currentStepIndex ? "text-brand-blue-dark" : "text-brand-gray"
+                    i === currentStepIndex ? "text-brand-blue-dark dark:text-white" : "text-brand-gray dark:text-white/50"
                   )}
                 >
                   {step.label}
                 </span>
               </div>
               {i < STEPS.length - 1 && (
-                <div className={cn("mx-2 h-px flex-1", i < currentStepIndex ? "bg-brand-blue" : "bg-brand-gray/25")} />
+                <div className={cn("mx-2 h-px flex-1", i < currentStepIndex ? "bg-brand-blue dark:bg-white" : "bg-brand-gray/25 dark:bg-white/15")} />
               )}
             </div>
           ))}
@@ -280,17 +280,17 @@ export function Vols() {
 
         <div
           className={cn(
-            "grid divide-x divide-brand-blue/[0.06] text-center",
+            "grid divide-x divide-brand-blue/[0.06] text-center dark:divide-white/10",
             isPhoneMission ? "grid-cols-3" : "grid-cols-4"
           )}
         >
           {!isPhoneMission && (
             <div>
-              <div className="text-[13px] text-brand-gray">Altitude</div>
+              <div className="text-[13px] text-brand-gray dark:text-white/60">Altitude</div>
               <div
                 className={cn(
                   "mt-1 font-display text-[26px] font-bold",
-                  altitudeExceeded ? "text-brand-orange" : "text-brand-blue-dark"
+                  altitudeExceeded ? "text-brand-orange" : "text-brand-blue-dark dark:text-white"
                 )}
               >
                 {flight.altitude} m
@@ -298,23 +298,23 @@ export function Vols() {
             </div>
           )}
           <div>
-            <div className="text-[13px] text-brand-gray">Batterie</div>
+            <div className="text-[13px] text-brand-gray dark:text-white/60">Batterie</div>
             <div
               className={cn(
                 "mt-1 font-display text-[26px] font-bold",
-                batteryLow ? "text-brand-orange" : "text-brand-blue-dark"
+                batteryLow ? "text-brand-orange" : "text-brand-blue-dark dark:text-white"
               )}
             >
               {flight.battery}%
             </div>
           </div>
           <div>
-            <div className="text-[13px] text-brand-gray">Images</div>
-            <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark">
+            <div className="text-[13px] text-brand-gray dark:text-white/60">Images</div>
+            <div className="mt-1 font-display text-[26px] font-bold text-brand-blue-dark dark:text-white">
               {flight.imagesCaptured}
             </div>
             {isPhoneMission && (
-              <div className={cn("mt-1 text-[12px] font-medium", consecutiveFailures >= 3 ? "text-brand-orange" : "text-brand-gray")}>
+              <div className={cn("mt-1 text-[12px] font-medium", consecutiveFailures >= 3 ? "text-brand-orange" : "text-brand-gray dark:text-white/60")}>
                 {consecutiveFailures >= 3
                   ? `${consecutiveFailures} échecs de capture d'affilée`
                   : lastCaptureAt
@@ -326,11 +326,11 @@ export function Vols() {
             )}
           </div>
           <div>
-            <div className="text-[13px] text-brand-gray">Anomalies</div>
+            <div className="text-[13px] text-brand-gray dark:text-white/60">Anomalies</div>
             <div
               className={cn(
                 "mt-1 font-display text-[26px] font-bold",
-                anomaliesCount > 0 ? "text-brand-orange" : "text-brand-blue-dark"
+                anomaliesCount > 0 ? "text-brand-orange" : "text-brand-blue-dark dark:text-white"
               )}
             >
               {anomaliesCount}
@@ -339,7 +339,7 @@ export function Vols() {
         </div>
       </div>
 
-      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
+      <div className="mb-5 flex flex-wrap items-center gap-2 rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
         {altitudeExceeded && (
           <Badge variant="high">
             <AlertTriangle size={12} />
@@ -353,7 +353,7 @@ export function Vols() {
           </Badge>
         )}
         {verification.counts.total === 0 ? (
-          <span className="text-[13px] text-brand-gray">Aucune image capturée pour l'instant.</span>
+          <span className="text-[13px] text-brand-gray dark:text-white/60">Aucune image capturée pour l'instant.</span>
         ) : (
           <>
             {verification.counts.pending > 0 && (
@@ -384,7 +384,7 @@ export function Vols() {
                 </Badge>
                 <button
                   onClick={verification.retryFailed}
-                  className="text-[12px] font-semibold text-brand-blue hover:underline"
+                  className="text-[12px] font-semibold text-brand-blue hover:underline dark:text-white/90"
                 >
                   Réessayer
                 </button>
@@ -395,7 +395,7 @@ export function Vols() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
-        <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+        <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
           <h3 className="mb-4">Images captées en direct</h3>
           {missionImages && missionImages.length > 0 ? (
             <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
@@ -409,28 +409,28 @@ export function Vols() {
               ))}
             </div>
           ) : (
-            <div className="flex h-24 items-center justify-center rounded-md bg-brand-off-white text-[13px] text-brand-gray">
+            <div className="flex h-24 items-center justify-center rounded-md bg-brand-off-white text-[13px] text-brand-gray dark:bg-white/5 dark:text-white/60">
               {flight.imagesCaptured > 0 ? "Chargement des photos…" : "Aucune photo pour l'instant"}
             </div>
           )}
         </div>
 
-        <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card">
+        <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
           <h3 className="mb-4">
             {isPhoneMission ? (isUploadMode ? "Import manuel" : "Vue caméra en direct") : "Vidéo drone"}
           </h3>
           <div className="overflow-hidden rounded-md">
             {isPhoneMission ? (
               isUploadMode ? (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-brand-blue/20 text-center">
-                  <UploadCloud size={22} className="text-brand-blue/50" strokeWidth={1.5} />
-                  <p className="px-4 text-[12px] text-brand-gray">
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
+                  <UploadCloud size={22} className="text-brand-blue/50 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">
                     Mode upload — importe tes photos depuis Anomalies.
                   </p>
                   <Link
                     to="/anomalies"
                     state={{ missionId: activeMission?.id }}
-                    className="text-[12px] font-semibold text-brand-blue hover:underline"
+                    className="text-[12px] font-semibold text-brand-blue hover:underline dark:text-white/90"
                   >
                     Importer maintenant
                   </Link>
@@ -444,21 +444,21 @@ export function Vols() {
                   className="h-[180px] w-full bg-black object-cover"
                 />
               ) : (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center">
-                  <VideoOff size={22} className="text-brand-gray/60" strokeWidth={1.5} />
-                  <p className="px-4 text-[12px] text-brand-gray">
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">
+                  <VideoOff size={22} className="text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">
                     {captureError ?? "Connexion à la caméra…"}
                   </p>
                 </div>
               )
             ) : (
-              <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-brand-blue/20 text-center">
-                <Video size={22} className="text-brand-blue/40" strokeWidth={1.5} />
-                <p className="text-[12px] font-medium text-brand-gray">Vidéo drone à venir</p>
+              <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
+                <Video size={22} className="text-brand-blue/40 dark:text-white/30" strokeWidth={1.5} />
+                <p className="text-[12px] font-medium text-brand-gray dark:text-white/60">Vidéo drone à venir</p>
               </div>
             )}
           </div>
-          <p className="mt-3 text-center text-[13px] text-brand-gray">
+          <p className="mt-3 text-center text-[13px] text-brand-gray dark:text-white/60">
             {flight.gps.lat.toFixed(4)}°N, {flight.gps.lng.toFixed(4)}°O
           </p>
         </div>

@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Search, Plus, Pencil, Trash2, Play, Loader2 } from "lucide-react";
+import { Search, Plus, Pencil, Trash2, Play, Loader2, XCircle } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { getEffectiveStatus, MISSION_STATUS_BADGE, formatMissionDateRange } from "@/lib/missionStatus";
 import type { Mission, MissionStatus, NewMissionInput } from "@/lib/api/types";
@@ -14,16 +15,19 @@ import { LaunchMissionDialog } from "@/components/user/missions/LaunchMissionDia
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { setCaptureMode, type CaptureMode } from "@/lib/captureMode";
+import { setCurrentMissionId } from "@/lib/currentMission";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
   { value: "toutes", label: "Toutes" },
   { value: "en_attente", label: "En attente" },
   { value: "en_cours", label: "En cours" },
   { value: "terminee", label: "Terminée" },
+  { value: "annulee", label: "Annulée" },
 ];
 
 export function Missions() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const { addNotification } = useNotifications();
   const { data: missions, isLoading, isError } = useQuery({
     queryKey: ["missions"],
@@ -40,6 +44,7 @@ export function Missions() {
   const [deleting, setDeleting] = useState(false);
 
   const [launchTarget, setLaunchTarget] = useState<Mission | null>(null);
+  const [cancelTarget, setCancelTarget] = useState<Mission | null>(null);
 
   const launchMutation = useMutation({
     mutationFn: async ({ mission, mode }: { mission: Mission; mode: CaptureMode }) => {
@@ -62,6 +67,10 @@ export function Missions() {
       return updated;
     },
     onSuccess: (updated) => {
+      // "Résultat analyse" (Anomalies.tsx) bascule sur cette mission : les
+      // résultats de la précédente restent consultables ailleurs (Rapports)
+      // mais disparaissent de ce tableau dès qu'une nouvelle mission démarre.
+      setCurrentMissionId(updated.id);
       queryClient.invalidateQueries({ queryKey: ["missions"] });
       queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
       queryClient.invalidateQueries({ queryKey: ["active-flight"] });
@@ -81,6 +90,25 @@ export function Missions() {
         title: "Lancement incomplet",
         message: err instanceof Error ? err.message : "Le vol n'a pas pu démarrer. Réessaie depuis Missions.",
       });
+    },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: (mission: Mission) =>
+      api.updateMission(mission.id, {
+        name: mission.name,
+        zone: mission.zone,
+        description: mission.description,
+        dateDebut: mission.dateDebut,
+        dateFin: mission.dateFin,
+        status: "annulee",
+        appareil: mission.appareil,
+        droneId: mission.droneId,
+      }),
+    onSuccess: () => {
+      setCancelTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["missions"] });
+      queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
     },
   });
 
@@ -160,7 +188,7 @@ export function Missions() {
                 "rounded-sm px-3.5 py-1.5 text-[13px] font-semibold transition-colors",
                 filter === f.value
                   ? "bg-brand-blue text-white"
-                  : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white"
+                  : "bg-white text-brand-blue-dark/70 border border-brand-gray/20 hover:bg-brand-off-white dark:border-white/15 dark:bg-white/5 dark:text-white/70 dark:hover:bg-white/10"
               )}
             >
               {f.label}
@@ -185,18 +213,18 @@ export function Missions() {
         <TableSkeleton columns={6} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center text-center">
-          <p className="font-semibold text-brand-blue-dark">Impossible de charger les missions</p>
-          <p className="mt-1 text-[13px] text-brand-gray">Vérifie la connexion à l'API et réessaie.</p>
+          <p className="font-semibold text-brand-blue-dark dark:text-white">Impossible de charger les missions</p>
+          <p className="mt-1 text-[13px] text-brand-gray dark:text-white/60">Vérifie la connexion à l'API et réessaie.</p>
         </div>
       ) : filtered.length === 0 ? (
         <div className="flex h-40 flex-col items-center justify-center text-center">
-          <p className="font-semibold text-brand-blue-dark">Aucune mission ne correspond</p>
-          <p className="mt-1 text-[13px] text-brand-gray">Essaie un autre filtre ou une autre recherche.</p>
+          <p className="font-semibold text-brand-blue-dark dark:text-white">Aucune mission ne correspond</p>
+          <p className="mt-1 text-[13px] text-brand-gray dark:text-white/60">Essaie un autre filtre ou une autre recherche.</p>
         </div>
       ) : (
         <>
           {/* Vue tableau — desktop */}
-          <div className="hidden overflow-hidden rounded-lg border border-brand-blue/[0.06] bg-white shadow-card md:block">
+          <div className="hidden overflow-hidden rounded-lg border border-brand-blue/[0.06] bg-white shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none md:block">
             <table className="w-full table-fixed text-left text-[14px]">
               <colgroup>
                 <col className="w-[11%]" />
@@ -207,7 +235,7 @@ export function Missions() {
                 <col className="w-[15%]" />
               </colgroup>
               <thead>
-                <tr className="border-b border-brand-blue/[0.06] text-[12px] uppercase tracking-wide text-brand-gray">
+                <tr className="border-b border-brand-blue/[0.06] text-[12px] uppercase tracking-wide text-brand-gray dark:border-white/10 dark:text-white/60">
                   <th className="px-3 py-3 font-medium">Zone</th>
                   <th className="px-3 py-3 font-medium">Mission</th>
                   <th className="px-3 py-3 font-medium">Période</th>
@@ -221,20 +249,20 @@ export function Missions() {
                   const isLaunching = launchMutation.isPending && launchMutation.variables?.mission.id === m.id;
                   const effectiveStatus = getEffectiveStatus(m);
                   return (
-                    <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60">
+                    <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60 dark:border-white/5 dark:hover:bg-white/5">
                       <td className="px-3 py-3 truncate" title={m.zone}>
                         <Badge variant="neutral">{m.zone}</Badge>
                       </td>
-                      <td className="truncate px-3 py-3 font-semibold text-brand-blue-dark" title={m.name}>
+                      <td className="truncate px-3 py-3 font-semibold text-brand-blue-dark dark:text-white" title={m.name}>
                         {m.name}
                       </td>
                       <td
-                        className="truncate px-3 py-3 text-brand-gray"
+                        className="truncate px-3 py-3 text-brand-gray dark:text-white/60"
                         title={formatMissionDateRange(m.dateDebut, m.dateFin)}
                       >
                         {formatMissionDateRange(m.dateDebut, m.dateFin)}
                       </td>
-                      <td className="truncate px-3 py-3 text-brand-blue-dark/80" title={m.description}>
+                      <td className="truncate px-3 py-3 text-brand-blue-dark/80 dark:text-white/80" title={m.description}>
                         {m.description}
                       </td>
                       <td className="px-3 py-3">
@@ -257,9 +285,25 @@ export function Missions() {
                             ))}
                           <IconButton
                             icon={Pencil}
-                            label="Modifier"
+                            label={effectiveStatus !== "en_attente" ? "Modification impossible — mission déjà lancée" : "Modifier"}
                             onClick={() => openEditModal(m)}
-                            className="hover:bg-brand-blue/5 hover:text-brand-blue"
+                            disabled={effectiveStatus !== "en_attente"}
+                            className={
+                              effectiveStatus !== "en_attente"
+                                ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-brand-gray dark:hover:bg-transparent dark:hover:text-white/60"
+                                : "hover:bg-brand-blue/5 hover:text-brand-blue"
+                            }
+                          />
+                          <IconButton
+                            icon={XCircle}
+                            label={effectiveStatus !== "en_attente" ? "Annulation impossible — mission déjà lancée" : "Annuler"}
+                            onClick={() => setCancelTarget(m)}
+                            disabled={effectiveStatus !== "en_attente"}
+                            className={
+                              effectiveStatus !== "en_attente"
+                                ? "cursor-not-allowed opacity-40 hover:bg-transparent hover:text-brand-gray dark:hover:bg-transparent dark:hover:text-white/60"
+                                : ""
+                            }
                           />
                           <IconButton
                             icon={Trash2}
@@ -281,28 +325,28 @@ export function Missions() {
             {filtered.map((m: Mission) => {
               const effectiveStatus = getEffectiveStatus(m);
               return (
-                <div key={m.id} className="rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card">
+                <div key={m.id} className="rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
                   <div className="mb-2 flex items-start justify-between gap-2">
                     <div>
                       <Badge variant="neutral">{m.zone}</Badge>
-                      <p className="mt-1.5 font-semibold text-brand-blue-dark">{m.name}</p>
+                      <p className="mt-1.5 font-semibold text-brand-blue-dark dark:text-white">{m.name}</p>
                     </div>
                     <Badge variant={MISSION_STATUS_BADGE[effectiveStatus].variant}>{MISSION_STATUS_BADGE[effectiveStatus].label}</Badge>
                   </div>
 
-                  <p className="mb-3 text-[13px] text-brand-blue-dark/80">{m.description}</p>
+                  <p className="mb-3 text-[13px] text-brand-blue-dark/80 dark:text-white/80">{m.description}</p>
 
                   <div className="mb-3 flex items-center justify-between text-[13px]">
-                    <span className="text-brand-gray">Période</span>
-                    <span className="font-medium text-brand-blue-dark">
+                    <span className="text-brand-gray dark:text-white/60">Période</span>
+                    <span className="font-medium text-brand-blue-dark dark:text-white">
                       {formatMissionDateRange(m.dateDebut, m.dateFin)}
                     </span>
                   </div>
 
-                  <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3">
+                  <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3 dark:border-white/10">
                     {effectiveStatus === "en_attente" &&
                       (launchMutation.isPending && launchMutation.variables?.mission.id === m.id ? (
-                        <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray">
+                        <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray dark:text-white/60">
                           <Loader2 size={13} className="animate-spin" /> Lancement…
                         </span>
                       ) : (
@@ -315,9 +359,29 @@ export function Missions() {
                       ))}
                     <button
                       onClick={() => openEditModal(m)}
-                      className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline"
+                      disabled={effectiveStatus !== "en_attente"}
+                      title={effectiveStatus !== "en_attente" ? "Modification impossible — mission déjà lancée" : undefined}
+                      className={cn(
+                        "flex items-center gap-1 text-[13px] font-semibold",
+                        effectiveStatus !== "en_attente"
+                          ? "cursor-not-allowed text-brand-gray/50 dark:text-white/30"
+                          : "text-brand-blue hover:underline dark:text-white/90"
+                      )}
                     >
                       <Pencil size={13} /> Modifier
+                    </button>
+                    <button
+                      onClick={() => setCancelTarget(m)}
+                      disabled={effectiveStatus !== "en_attente"}
+                      title={effectiveStatus !== "en_attente" ? "Annulation impossible — mission déjà lancée" : undefined}
+                      className={cn(
+                        "flex items-center gap-1 text-[13px] font-semibold",
+                        effectiveStatus !== "en_attente"
+                          ? "cursor-not-allowed text-brand-gray/50 dark:text-white/30"
+                          : "text-brand-blue-dark/70 hover:underline dark:text-white/70"
+                      )}
+                    >
+                      <XCircle size={13} /> Annuler
                     </button>
                     <button
                       onClick={() => setDeleteTarget(m)}
@@ -350,13 +414,32 @@ export function Missions() {
         isLoading={deleting}
       />
 
+      <ConfirmDialog
+        open={!!cancelTarget}
+        title="Annuler cette mission ?"
+        description={`"${cancelTarget?.name}" passera au statut Annulée et ne pourra plus être modifiée ni lancée.`}
+        confirmLabel="Annuler la mission"
+        loadingLabel="Annulation…"
+        onConfirm={() => cancelTarget && cancelMutation.mutate(cancelTarget)}
+        onCancel={() => setCancelTarget(null)}
+        isLoading={cancelMutation.isPending}
+      />
+
       <LaunchMissionDialog
         mission={launchTarget}
         onCancel={() => setLaunchTarget(null)}
         onLaunch={(mission, mode) => {
           launchMutation.mutate(
             { mission, mode },
-            { onSuccess: () => setLaunchTarget(null) }
+            {
+              onSuccess: () => {
+                setLaunchTarget(null);
+                // Streaming direct -> on suit le vol en direct sur Vols ;
+                // Upload média -> le technicien enverra les photos après coup
+                // depuis IA & Anomalies (voir MediaAnalysisCard).
+                navigate(mode === "streaming" ? "/vols" : "/anomalies");
+              },
+            }
           );
         }}
         isLaunching={launchMutation.isPending}

@@ -4,24 +4,28 @@ import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
+import type { PlatformUser, UpdateTeamMemberInput } from "@/lib/api/types";
 
 interface Props {
   open: boolean;
+  member: PlatformUser | null;
   onClose: () => void;
-  onSave: (nom: string) => Promise<void>;
+  onSave: (input: UpdateTeamMemberInput) => Promise<void>;
 }
 
-export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
-  const [nom, setNom] = useState("");
+export function EditTeamMemberModal({ open, member, onClose, onSave }: Props) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
-    if (open) {
-      setNom("");
+    if (open && member) {
+      setName(member.name);
+      setEmail(member.email);
       setError(null);
     }
-  }, [open]);
+  }, [open, member]);
 
   function resetAndClose() {
     setError(null);
@@ -32,17 +36,17 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
     e.preventDefault();
     setError(null);
 
-    if (!nom.trim()) {
-      setError("Merci d'indiquer le nom de l'entreprise.");
+    if (!name.trim() || !email.trim()) {
+      setError("Merci de remplir tous les champs.");
       return;
     }
 
     setSubmitting(true);
     try {
-      await onSave(nom.trim());
+      await onSave({ name: name.trim(), email: email.trim() });
       resetAndClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Impossible de créer l'entreprise.");
+      setError(err instanceof Error ? err.message : "Impossible de modifier ce compte.");
     } finally {
       setSubmitting(false);
     }
@@ -50,7 +54,7 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
 
   return (
     <AnimatePresence>
-      {open && (
+      {open && member && (
         <motion.div
           className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
           variants={overlayVariants}
@@ -69,7 +73,7 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
           >
             <div className="mb-5 flex items-center justify-between">
               <h2 className="font-display text-[18px] font-bold text-brand-blue-dark dark:text-white">
-                Nouvelle entreprise
+                Modifier le technicien
               </h2>
               <button
                 onClick={resetAndClose}
@@ -79,12 +83,23 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} className="space-y-4">
+            <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Nom de l'entreprise
+                  Nom complet
                 </label>
-                <Input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Sonabel" autoFocus />
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Awa Compaoré" autoFocus />
+              </div>
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                  Email
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="awa.compaore@sonabel.bf"
+                />
               </div>
 
               {error && <p className="text-[13px] font-medium text-brand-orange">⚠ {error}</p>}
@@ -94,7 +109,7 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
                   Annuler
                 </Button>
                 <Button type="submit" variant="primary" size="sm" disabled={submitting}>
-                  {submitting ? "Création…" : "Créer l'entreprise"}
+                  {submitting ? "Enregistrement…" : "Enregistrer"}
                 </Button>
               </div>
             </form>

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { AnimatePresence, motion } from "framer-motion";
 import { Ban, CheckCircle2, Pencil, Trash2, UserPlus, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import type { Entreprise } from "@/lib/api/types";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
+import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 
 interface Props {
   open: boolean;
@@ -107,8 +109,6 @@ export function EntrepriseDetailModal({ open, entreprise, onClose }: Props) {
     onError: (err) => setAdminError(err instanceof Error ? err.message : "Impossible de créer le compte."),
   });
 
-  if (!open || !entreprise) return null;
-
   function handleRenameSubmit(e: React.FormEvent) {
     e.preventDefault();
     setRenameError(null);
@@ -138,11 +138,27 @@ export function EntrepriseDetailModal({ open, entreprise, onClose }: Props) {
     addAdminMutation.mutate();
   }
 
-  const isBlocked = entreprise.status === "bloquee";
+  const isBlocked = entreprise?.status === "bloquee";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
-      <div className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg bg-white p-6 shadow-2xl dark:bg-brand-blue-dark">
+    <AnimatePresence>
+      {open && entreprise && (
+        <motion.div
+          className="dark fixed inset-0 z-50 flex items-center justify-center bg-brand-blue-dark/60 px-4 backdrop-blur-sm"
+          variants={overlayVariants}
+          initial="hidden"
+          animate="visible"
+          exit="hidden"
+          transition={overlayTransition}
+        >
+          <motion.div
+            className="max-h-[85vh] w-full max-w-lg overflow-y-auto rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            variants={modalVariants}
+            initial="hidden"
+            animate="visible"
+            exit="hidden"
+            transition={modalTransition}
+          >
         <div className="mb-1 flex items-start justify-between gap-3">
           {renaming ? (
             <form onSubmit={handleRenameSubmit} className="flex flex-1 items-center gap-2">
@@ -267,27 +283,29 @@ export function EntrepriseDetailModal({ open, entreprise, onClose }: Props) {
             Ajouter un administrateur
           </Button>
         )}
-      </div>
 
-      <ConfirmDialog
-        open={confirmBlock}
-        title="Bloquer cette entreprise"
-        description="Les comptes de cette entreprise ne pourront plus se connecter, y compris ceux déjà connectés — leur session sera coupée immédiatement."
-        confirmLabel="Bloquer"
-        loadingLabel="Blocage…"
-        onConfirm={() => blockMutation.mutate()}
-        onCancel={() => setConfirmBlock(false)}
-        isLoading={blockMutation.isPending}
-      />
-      <ConfirmDialog
-        open={confirmDelete}
-        title="Supprimer cette entreprise"
-        description="Suppression douce — l'entreprise et ses comptes ne seront plus accessibles. Cette action ne peut pas être annulée depuis l'interface."
-        confirmLabel="Supprimer"
-        onConfirm={() => deleteMutation.mutate()}
-        onCancel={() => setConfirmDelete(false)}
-        isLoading={deleteMutation.isPending}
-      />
-    </div>
+            <ConfirmDialog
+              open={confirmBlock}
+              title="Bloquer cette entreprise"
+              description="Les comptes de cette entreprise ne pourront plus se connecter, y compris ceux déjà connectés — leur session sera coupée immédiatement."
+              confirmLabel="Bloquer"
+              loadingLabel="Blocage…"
+              onConfirm={() => blockMutation.mutate()}
+              onCancel={() => setConfirmBlock(false)}
+              isLoading={blockMutation.isPending}
+            />
+            <ConfirmDialog
+              open={confirmDelete}
+              title="Supprimer cette entreprise"
+              description="Suppression douce — l'entreprise et ses comptes ne seront plus accessibles. Cette action ne peut pas être annulée depuis l'interface."
+              confirmLabel="Supprimer"
+              onConfirm={() => deleteMutation.mutate()}
+              onCancel={() => setConfirmDelete(false)}
+              isLoading={deleteMutation.isPending}
+            />
+          </motion.div>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }

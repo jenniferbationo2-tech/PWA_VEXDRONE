@@ -106,8 +106,15 @@ async function realLogin(username: string, password: string) {
   });
 
   if (!res.ok) {
-    const body = await res.json().catch(() => null);
-    throw new Error(body?.detail ?? "Identifiants incorrects");
+    const errBody = await res.json().catch(() => null);
+    // 409 = compte deja connecte ailleurs (schema live) : rien a voir avec un
+    // mauvais mot de passe, message par defaut trompeur sinon (voir §login).
+    if (res.status === 409) {
+      throw new Error(
+        errBody?.detail ?? "Ce compte a déjà une session active ailleurs. Déconnecte-toi de l'autre session avant de réessayer."
+      );
+    }
+    throw new Error(errBody?.detail ?? "Identifiants incorrects");
   }
 
   const data = await res.json();

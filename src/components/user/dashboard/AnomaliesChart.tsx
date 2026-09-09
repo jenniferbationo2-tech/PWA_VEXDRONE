@@ -1,11 +1,21 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
+import { useTheme } from "@/lib/theme/ThemeContext";
 
 interface Props {
   data: { date: string; count: number }[];
 }
 
 export function AnomaliesChart({ data }: Props) {
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
+  // Recharts prend des couleurs SVG figées (fill/stroke) — les classes
+  // dark: de Tailwind n'ont aucune prise ici, contrairement au reste de
+  // l'app. D'où ce choix explicite par thème plutôt qu'une seule palette.
+  const lineColor = isDark ? "#FFFFFF" : "#1B365D";
+  const gridColor = isDark ? "#FFFFFF" : "#1B365D";
+  const tickColor = isDark ? "rgba(255,255,255,0.6)" : "#8A8D8F";
+
   const chartData = data.map((d) => ({
     ...d,
     label: new Date(d.date).toLocaleDateString("fr-FR", { day: "numeric", month: "short" }),
@@ -21,19 +31,19 @@ export function AnomaliesChart({ data }: Props) {
           <AreaChart data={chartData} margin={{ top: 4, right: 8, left: -20, bottom: 0 }}>
             <defs>
               <linearGradient id="anomaliesFill" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="#1B365D" stopOpacity={0.14} />
-                <stop offset="100%" stopColor="#1B365D" stopOpacity={0} />
+                <stop offset="0%" stopColor={lineColor} stopOpacity={0.14} />
+                <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
               </linearGradient>
             </defs>
-            <CartesianGrid vertical={false} stroke="#1B365D" strokeOpacity={0.06} />
+            <CartesianGrid vertical={false} stroke={gridColor} strokeOpacity={0.06} />
             <XAxis
               dataKey="label"
               tickLine={false}
               axisLine={false}
-              tick={{ fontSize: 12, fill: "#8A8D8F" }}
+              tick={{ fontSize: 12, fill: tickColor }}
               interval="preserveStartEnd"
             />
-            <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: "#8A8D8F" }} width={24} />
+            <YAxis tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: tickColor }} width={24} />
             <Tooltip
               contentStyle={{
                 borderRadius: 8,
@@ -47,7 +57,7 @@ export function AnomaliesChart({ data }: Props) {
             <Area
               type="monotone"
               dataKey="count"
-              stroke="#1B365D"
+              stroke={lineColor}
               strokeWidth={2}
               fill="url(#anomaliesFill)"
               activeDot={{ r: 4, fill: "#E37222", stroke: "#fff", strokeWidth: 2 }}

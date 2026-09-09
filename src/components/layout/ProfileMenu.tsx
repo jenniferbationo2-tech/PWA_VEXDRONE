@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
 import { ChevronDown, Mail, Settings, ShieldCheck } from "lucide-react";
 import { NavLink } from "react-router-dom";
 import { getInitials } from "@/lib/utils";
+import { normalizeRole, roleLabel, type Role } from "@/lib/Auth/roles";
 import type { User } from "@/lib/Auth/AuthContext";
 
 interface Props {
@@ -10,10 +12,19 @@ interface Props {
   subtitle?: string;
 }
 
+// Couleurs badge rôle imposées par la maquette — pas de token brand existant pour ce triptyque.
+const ROLE_BADGE_STYLE: Record<Role, { bg: string; color: string }> = {
+  technicien: { bg: "#4CAF50", color: "#FFFFFF" },
+  admin: { bg: "#FF9800", color: "#FFFFFF" },
+  super_admin: { bg: "#B0BEC5", color: "#12253F" },
+};
+
 export function ProfileMenu({ user, displayName, subtitle }: Props) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const initials = getInitials(displayName);
+  const role = normalizeRole(user.role);
+  const roleBadgeStyle = ROLE_BADGE_STYLE[role];
 
   useEffect(() => {
     if (!open) return;
@@ -55,11 +66,12 @@ export function ProfileMenu({ user, displayName, subtitle }: Props) {
           <span className="block truncate font-display text-[13px] font-semibold leading-tight text-brand-blue-dark dark:text-white">
             {displayName}
           </span>
-          {subtitle && (
-            <span className="block truncate text-[11px] leading-tight text-brand-gray dark:text-white/60">
-              {subtitle}
-            </span>
-          )}
+          <span
+            className="mt-0.5 inline-block truncate rounded-full px-2 py-0.5 text-[10px] font-semibold leading-tight"
+            style={{ backgroundColor: roleBadgeStyle.bg, color: roleBadgeStyle.color }}
+          >
+            {roleLabel(user.role)}
+          </span>
         </span>
         <ChevronDown
           size={16}
@@ -68,12 +80,18 @@ export function ProfileMenu({ user, displayName, subtitle }: Props) {
         />
       </button>
 
-      {open && (
-        <div
-          role="menu"
-          className="absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-lg bg-white shadow-card-hover ring-1 ring-brand-blue/[0.06] dark:bg-brand-blue-dark dark:ring-white/10"
-        >
-          <div className="flex items-center gap-3 bg-brand-off-white px-4 py-4 dark:bg-white/5">
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            role="menu"
+            className="dark absolute right-0 top-full z-50 mt-2 w-72 overflow-hidden rounded-lg border border-white/10 bg-brand-blue-dark/85 shadow-card-hover backdrop-blur-md"
+            initial={{ opacity: 0, scale: 0.96, y: -6 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.96, y: -6 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            style={{ transformOrigin: "top right" }}
+          >
+          <div className="flex items-center gap-3 bg-white/5 px-4 py-4">
             {user.avatarUrl ? (
               <img src={user.avatarUrl} alt={displayName} className="h-12 w-12 flex-shrink-0 rounded-full object-cover" />
             ) : (
@@ -114,8 +132,9 @@ export function ProfileMenu({ user, displayName, subtitle }: Props) {
               Paramètres
             </NavLink>
           </div>
-        </div>
-      )}
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

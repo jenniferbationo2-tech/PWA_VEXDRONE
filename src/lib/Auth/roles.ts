@@ -29,3 +29,13 @@ const ROLE_HOME: Record<Role, string> = {
 export function roleHome(role: string | undefined): string {
   return ROLE_HOME[normalizeRole(role)];
 }
+
+const ROLE_LABEL: Record<Role, string> = {
+  technicien: "Technicien",
+  admin: "Admin",
+  super_admin: "SuperAdmin",
+};
+
+export function roleLabel(role: string | undefined): string {
+  return ROLE_LABEL[normalizeRole(role)];
+}

@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { NavLink, useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { normalizeRole, type Role } from "@/lib/Auth/roles";
@@ -69,13 +70,24 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void } = {}) {
             end={to === "/" || to === "/admin" || to === "/super-admin"}
             className={({ isActive }) =>
               cn(
-                "flex items-center gap-3 rounded-sm px-3 py-2.5 text-[14px] font-medium text-white/70 transition-colors hover:bg-white/5 hover:text-white",
-                isActive && "bg-white/10 text-white border-l-2 border-brand-orange -ml-[2px] pl-[14px]"
+                "relative flex items-center gap-3 rounded-sm px-3 py-2.5 text-[14px] font-medium transition-colors",
+                isActive ? "text-white" : "text-white/70 hover:bg-white/5 hover:text-white"
               )
             }
           >
-            <Icon size={18} strokeWidth={1.75} />
-            {label}
+            {({ isActive }) => (
+              <>
+                {isActive && (
+                  <motion.span
+                    layoutId="sidebar-active-pill"
+                    className="absolute inset-0 rounded-sm border-l-2 border-brand-orange bg-white/10"
+                    transition={{ type: "spring", stiffness: 500, damping: 35 }}
+                  />
+                )}
+                <Icon size={18} strokeWidth={1.75} className="relative z-10 flex-shrink-0" />
+                <span className="relative z-10">{label}</span>
+              </>
+            )}
           </NavLink>
         ))}
       </nav>
