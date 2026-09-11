@@ -25,6 +25,22 @@ import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
 import { useAuth } from "@/lib/Auth/AuthContext";
+import { toAnomalyTypeLabel } from "@/lib/api/mappers";
+
+// Palette par type_anomalie (pas par gravité, contrairement au reste de
+// l'app) — cohérente avec les 9 classes réelles du modèle IA, voir
+// backendTypes.ts. Couleur neutre en repli pour un type inconnu/"autre".
+const DETECTION_COLORS: Record<string, string> = {
+  isolateur_casse: "#ef4444",
+  corrosion: "#f97316",
+  antenne_endommagee: "#eab308",
+  broken_tower: "#dc2626",
+  broken_cable: "#db2777",
+  vegetation_cautious: "#84cc16",
+  vegetation_critical: "#16a34a",
+  vegetation_low: "#65a30d",
+};
+const DEFAULT_DETECTION_COLOR = "#64748b";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -48,13 +64,68 @@ export function Vols() {
     queryFn: () => api.getEntrepriseSettings(user!.entreprise_id!),
     enabled: !!user?.entreprise_id,
   });
-  const { isCapturing, error: captureError, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow } =
-    usePhoneCapture();
+  const {
+    isCapturing,
+    error: captureError,
+    stream,
+    lastCaptureAt,
+    consecutiveFailures,
+    stopCaptureNow,
+    liveDetections,
+  } = usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
+  const liveOverlayRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
     if (liveVideoRef.current) liveVideoRef.current.srcObject = stream;
   }, [stream]);
+
+  // Superpose les boîtes de détection temps réel sur la vidéo live — la vidéo
+  // est en object-cover (hauteur fixe, largeur responsive) donc rognée sur un
+  // axe ; on recalcule l'échelle et le décalage "cover" pour que les boîtes
+  // (en fractions 0-1 de la frame source) tombent au bon endroit à l'écran.
+  useEffect(() => {
+    const canvas = liveOverlayRef.current;
+    const video = liveVideoRef.current;
+    if (!canvas || !video) return;
+
+    const containerW = canvas.clientWidth;
+    const containerH = canvas.clientHeight;
+    canvas.width = containerW;
+    canvas.height = containerH;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, containerW, containerH);
+
+    if (!video.videoWidth || !video.videoHeight || liveDetections.length === 0) return;
+
+    const scale = Math.max(containerW / video.videoWidth, containerH / video.videoHeight);
+    const renderedW = video.videoWidth * scale;
+    const renderedH = video.videoHeight * scale;
+    const offsetX = (containerW - renderedW) / 2;
+    const offsetY = (containerH - renderedH) / 2;
+
+    for (const detection of liveDetections) {
+      const x = offsetX + detection.bbox.x * renderedW;
+      const y = offsetY + detection.bbox.y * renderedH;
+      const w = detection.bbox.width * renderedW;
+      const h = detection.bbox.height * renderedH;
+      const color = DETECTION_COLORS[detection.type] ?? DEFAULT_DETECTION_COLOR;
+
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+
+      const label = `${toAnomalyTypeLabel(detection.type)} ${Math.round(detection.confidence)}%`;
+      ctx.font = "11px sans-serif";
+      const labelW = ctx.measureText(label).width + 8;
+      const labelY = Math.max(0, y - 16);
+      ctx.fillStyle = color;
+      ctx.fillRect(x, labelY, labelW, 16);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(label, x + 4, labelY + 12);
+    }
+  }, [liveDetections]);
 
   // Fait vivre le "il y a Xs" sous le compteur d'images sans dépendre du
   // polling du vol (toutes les 4s, trop lent pour ce repère).
@@ -437,13 +508,16 @@ export function Vols() {
                   </Link>
                 </div>
               ) : isCapturing && stream ? (
-                <video
-                  ref={liveVideoRef}
-                  autoPlay
-                  muted
-                  playsInline
-                  className="h-[180px] w-full bg-black object-cover"
-                />
+                <div className="relative h-[180px] w-full">
+                  <video
+                    ref={liveVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="h-[180px] w-full bg-black object-cover"
+                  />
+                  <canvas ref={liveOverlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+                </div>
               ) : (
                 <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">
                   <VideoOff size={22} className="text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />

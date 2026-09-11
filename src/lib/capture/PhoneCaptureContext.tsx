@@ -14,6 +14,54 @@ const JPEG_QUALITY = 0.8;
 // remonte plus rien (pas juste un raté isolé) et on alerte le technicien.
 const FAILURE_ALERT_THRESHOLD = 3;
 
+// Flux temps réel séparé de captureOnce (qui persiste une image toutes les
+// 3s) : ici aucune frame n'est enregistrée côté serveur, juste analysée à la
+// volée pour l'overlay live — cadence bien plus rapide, qualité réduite pour
+// rester léger à ce rythme.
+const LIVE_ANALYSE_INTERVAL_MS = 400;
+const LIVE_ANALYSE_JPEG_QUALITY = 0.5;
+
+export interface LiveDetection {
+  type: string;
+  confidence: number;
+  bbox: { x: number; y: number; width: number; height: number };
+}
+
+// URL directe du backend pour le WebSocket : le proxy Vite /api en dev ne
+// relaie pas les upgrades WebSocket sans config dédiée (server.proxy ws:true),
+// donc on bypasse le proxy et on parle directement au backend, comme fait
+// ailleurs dans ce projet (voir vite.config.ts, même host). Dérivée de
+// VITE_API_BASE_URL si définie (prod), sinon le backend connu de ce POC.
+function liveAnalyseUrl(flightId: string): string {
+  const httpBase = import.meta.env.VITE_API_BASE_URL || "https://vexdrone-osc.onrender.com";
+  return `${httpBase.replace(/^http/, "ws")}/api/v1/vols/${flightId}/live-analyse`;
+}
+
+// Même convention de champs que BackendAnomaly (type_anomalie, confiance,
+// bbox_x/y/largeur/hauteur, voir backendTypes.ts) — pas encore confirmée
+// spécifiquement pour ce flux WebSocket au moment d'écrire ce câblage
+// (endpoint tout juste livré), à ajuster si le payload réel diffère. Une
+// détection dont la forme ne correspond pas est ignorée plutôt que de
+// planter tout le lot.
+function toLiveDetection(raw: unknown): LiveDetection | null {
+  if (!raw || typeof raw !== "object") return null;
+  const d = raw as Record<string, unknown>;
+  if (
+    typeof d.type_anomalie !== "string" ||
+    typeof d.bbox_x !== "number" ||
+    typeof d.bbox_y !== "number" ||
+    typeof d.bbox_largeur !== "number" ||
+    typeof d.bbox_hauteur !== "number"
+  ) {
+    return null;
+  }
+  return {
+    type: d.type_anomalie,
+    confidence: typeof d.confiance === "number" ? d.confiance : 0,
+    bbox: { x: d.bbox_x, y: d.bbox_y, width: d.bbox_largeur, height: d.bbox_hauteur },
+  };
+}
+
 interface PhoneCaptureContextType {
   isCapturing: boolean;
   error: string | null;
@@ -32,6 +80,11 @@ interface PhoneCaptureContextType {
   // de React Query) peut encore declencher 1-2 captures pendant ce delai. A
   // appeler des le clic sur "Terminer", avant meme d'attendre la mutation.
   stopCaptureNow: () => void;
+  // Detections IA du flux temps reel (wss .../vols/{id}/live-analyse),
+  // rafraichies a chaque reponse recue pendant un vol streaming — sert a
+  // superposer les boites sur la video live (voir Vols.tsx). Vide hors
+  // streaming ou tant qu'aucune reponse n'est encore arrivee.
+  liveDetections: LiveDetection[];
 }
 
 const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
@@ -41,6 +94,7 @@ const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
   lastCaptureAt: null,
   consecutiveFailures: 0,
   stopCaptureNow: () => {},
+  liveDetections: [],
 });
 
 export function usePhoneCapture() {
@@ -93,12 +147,15 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const [lastCaptureAt, setLastCaptureAt] = useState<number | null>(null);
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
+  const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([]);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlightIdRef = useRef<string | null>(null);
   const imagesCapturedRef = useRef(0);
+  const liveWsRef = useRef<WebSocket | null>(null);
+  const liveFrameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // Vol arrete manuellement (bouton "Terminer") : tant que ["active-flight"]
   // n'a pas rattrape ce changement (peut prendre plusieurs secondes si le
   // backend est lent a repondre), le flight en cache reste "en_cours" — sans
@@ -229,6 +286,60 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     }
   }
 
+  function sendLiveFrame() {
+    const ws = liveWsRef.current;
+    const video = videoRef.current;
+    if (!ws || ws.readyState !== WebSocket.OPEN || !video || video.readyState < 2) return;
+
+    const canvas = document.createElement("canvas");
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0);
+    canvas.toBlob(
+      (blob) => {
+        if (blob && liveWsRef.current === ws && ws.readyState === WebSocket.OPEN) ws.send(blob);
+      },
+      "image/jpeg",
+      LIVE_ANALYSE_JPEG_QUALITY
+    );
+  }
+
+  function startLiveAnalyse(flightId: string) {
+    const ws = new WebSocket(liveAnalyseUrl(flightId));
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string);
+        if (!Array.isArray(data?.detections)) return;
+        const detections: LiveDetection[] = data.detections
+          .map(toLiveDetection)
+          .filter((d: LiveDetection | null): d is LiveDetection => d !== null);
+        setLiveDetections(detections);
+      } catch {
+        // Reponse non-JSON ou inattendue : ignoree, la prochaine frame retentera.
+      }
+    };
+    ws.onclose = () => {
+      if (liveWsRef.current === ws) liveWsRef.current = null;
+    };
+    ws.onerror = () => {
+      // Best-effort, meme logique que captureOnce : une erreur ponctuelle ne
+      // doit pas interrompre le direct, le prochain envoi de frame retentera
+      // une fois la connexion revenue (ou reste silencieux si le socket est mort).
+    };
+    liveWsRef.current = ws;
+    liveFrameIntervalRef.current = setInterval(sendLiveFrame, LIVE_ANALYSE_INTERVAL_MS);
+  }
+
+  function stopLiveAnalyse() {
+    if (liveFrameIntervalRef.current) clearInterval(liveFrameIntervalRef.current);
+    liveFrameIntervalRef.current = null;
+    liveWsRef.current?.close();
+    liveWsRef.current = null;
+    setLiveDetections([]);
+  }
+
   function scheduleNext(missionId: string, flightId: string) {
     timeoutRef.current = setTimeout(async () => {
       await captureOnce(missionId, flightId);
@@ -260,6 +371,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         message: "Le téléphone capture et analyse en continu, même si tu changes d'écran.",
       });
       scheduleNext(missionId, flightId);
+      startLiveAnalyse(flightId);
     } catch (err) {
       const message =
         err instanceof Error && err.name === "NotAllowedError"
@@ -278,6 +390,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     streamRef.current = null;
     setIsCapturing(false);
     setStream(null);
+    stopLiveAnalyse();
   }
 
   function stopCaptureNow() {
@@ -313,7 +426,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
   return (
     <PhoneCaptureContext.Provider
-      value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow }}
+      value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow, liveDetections }}
     >
       {children}
       <video ref={videoRef} className="hidden" muted playsInline />
