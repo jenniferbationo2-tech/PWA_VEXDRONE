@@ -182,12 +182,12 @@ export function Parametres() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="mounira.diallo@sonabel.bf"
+                  placeholder="mounira.diallo@vexdrone.bf"
                 />
               </div>
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">Organisation</label>
-                <Input value={organisation} onChange={(e) => setOrganisation(e.target.value)} placeholder="SONABEL" />
+                <Input value={organisation} onChange={(e) => setOrganisation(e.target.value)} placeholder="VEXDRONE" />
               </div>
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">

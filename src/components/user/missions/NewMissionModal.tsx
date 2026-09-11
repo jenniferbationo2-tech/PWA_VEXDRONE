@@ -32,6 +32,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
   const [dateFin, setDateFin] = useState("");
   const [appareil, setAppareil] = useState<CaptureDevice>("appareil_photo");
   const [droneId, setDroneId] = useState("");
+  const [typeMissionId, setTypeMissionId] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -44,6 +45,14 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
   });
   const availableDrones = (drones ?? []).filter((d) => d.status === "disponible");
 
+  // Types créés par l'admin de l'entreprise du technicien connecté (voir
+  // MissionTypesModal côté Admin) — optionnel, la liste peut être vide.
+  const { data: missionTypes } = useQuery({
+    queryKey: ["mission-types"],
+    queryFn: api.getMissionTypes,
+    enabled: open,
+  });
+
   // Pré-remplit le formulaire à chaque ouverture en mode modification
   useEffect(() => {
     if (open && mission) {
@@ -54,6 +63,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
       setDateFin(mission.dateFin);
       setAppareil(mission.appareil);
       setDroneId(mission.droneId ?? "");
+      setTypeMissionId(mission.typeMissionId ?? "");
     } else if (open && !mission) {
       setName("");
       setZone("");
@@ -62,6 +72,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
       setDateFin("");
       setAppareil("appareil_photo");
       setDroneId("");
+      setTypeMissionId("");
     }
     setError(null);
   }, [open, mission]);
@@ -112,6 +123,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
         status,
         appareil: isEditMode && mission ? mission.appareil : appareil,
         droneId: isEditMode && mission ? mission.droneId : appareil === "drone" ? droneId : undefined,
+        typeMissionId: typeMissionId || undefined,
       });
       resetAndClose();
     } catch (err) {
@@ -206,6 +218,30 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
               )}
             </div>
           )}
+
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">
+              Type de mission <span className="font-normal text-white/50">(optionnel)</span>
+            </label>
+            {!missionTypes || missionTypes.length === 0 ? (
+              <p className="rounded-sm border border-white/15 bg-white/5 px-3 py-2.5 text-[13px] text-white/60">
+                Aucun type défini par ton administrateur pour l'instant.
+              </p>
+            ) : (
+              <select
+                value={typeMissionId}
+                onChange={(e) => setTypeMissionId(e.target.value)}
+                className="h-10 w-full rounded-sm border border-white/15 bg-white/5 px-3 text-[14px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
+              >
+                <option value="">Aucun type</option>
+                {missionTypes.map((t) => (
+                  <option key={t.id} value={t.id}>
+                    {t.name}
+                  </option>
+                ))}
+              </select>
+            )}
+          </div>
 
           <div>
             <label className="mb-1.5 block text-[13px] font-medium text-white">Nom de la mission</label>

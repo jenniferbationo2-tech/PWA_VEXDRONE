@@ -19,8 +19,22 @@ export interface BackendMission {
   // (GET /missions/entreprise), absent des autres écrans qui n'affichent que
   // les missions de l'utilisateur courant.
   user_id: number;
+  // PROPOSITION pas encore livrée côté backend (voir BACKEND_REQUESTS.md §5) —
+  // absent de MissionCreate/MissionRead sur le schéma live vérifié le
+  // 2026-09-11. Champ optionnel : une mission peut ne pas avoir de type.
+  type_mission_uuid: string | null;
   created_at: string;
   updated_at: string | null;
+}
+
+// PROPOSITION pas encore livrée côté backend (voir BACKEND_REQUESTS.md §5) —
+// aucune ressource ni endpoint de ce nom n'existe sur le schéma live vérifié
+// le 2026-09-11.
+export interface BackendMissionType {
+  uuid: string;
+  nom: string;
+  entreprise_id: string;
+  created_at: string;
 }
 
 // Les 9 classes réelles du modèle IA (doc backend du 22/08/2026, §6.1) — les

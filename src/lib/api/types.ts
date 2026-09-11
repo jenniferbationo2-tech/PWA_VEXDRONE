@@ -111,6 +111,10 @@ export interface Mission {
   // le PATCH côté API) — voir NewMissionModal.
   appareil: CaptureDevice;
   droneId?: string;
+  // Optionnel : le technicien peut créer une mission sans type. Renseigné
+  // parmi les types créés par l'admin de son entreprise (voir MissionType) —
+  // ressource pas encore livrée côté backend, voir BACKEND_REQUESTS.md §5.
+  typeMissionId?: string;
   // Id (numérique côté API, string ici — même convention que PlatformUser.id)
   // du technicien propriétaire. Absent des payloads de création : la mission
   // appartient toujours à l'appelant, jamais choisi explicitement.
@@ -118,6 +122,19 @@ export interface Mission {
   // Horodatage serveur — sert au tri "plus récent en premier" (voir
   // sortByNewestFirst dans lib/utils.ts), jamais affiché tel quel.
   createdAt: string;
+}
+
+// Catégorie de mission créée par un Admin, visible uniquement par les
+// techniciens de sa propre entreprise — voir BACKEND_REQUESTS.md §5 (pas
+// encore livré côté API à ce jour). Volontairement minimal (juste un nom).
+export interface MissionType {
+  id: string;
+  name: string;
+  createdAt: string;
+}
+
+export interface NewMissionTypeInput {
+  name: string;
 }
 
 // Payload envoyé à la création — l'id et le status sont calculés/attribués ailleurs

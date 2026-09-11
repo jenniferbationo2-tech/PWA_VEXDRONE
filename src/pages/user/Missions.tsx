@@ -60,6 +60,7 @@ export function Missions() {
         status: "en_cours",
         appareil: mission.appareil,
         droneId: mission.droneId,
+        typeMissionId: mission.typeMissionId,
       });
       // Un Vol existe pour les deux méthodes d'inspection (drone ou
       // téléphone) — c'est lui que /vols/actif et la page Vols suivent.
@@ -104,6 +105,7 @@ export function Missions() {
         status: "annulee",
         appareil: mission.appareil,
         droneId: mission.droneId,
+        typeMissionId: mission.typeMissionId,
       }),
     onSuccess: () => {
       setCancelTarget(null);

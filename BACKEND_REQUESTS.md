@@ -33,6 +33,19 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 **Impact frontend** : la pop-up de détail d'un technicien (Admin > Techniciens) prévoit une icône Bloquer/Débloquer à côté du badge de statut ; elle est affichée mais désactivée ("Bientôt disponible") tant que ce endpoint n'existe pas, faute de pouvoir la distinguer proprement de l'action Supprimer.
 **Proposition** : `POST /users/team/{username}/bloquer` et `/debloquer` (même forme que pour les entreprises), avec un champ de statut sur `PlatformUser`/`UserRead` distinct de la suppression (ex. `is_blocked`), pour permettre une réactivation ultérieure — contrairement au soft-delete qui retire le compte de la liste.
 
+## 5. Aucune notion de "type de mission"
+
+**Endpoints concernés** : aucun — confirmé le 2026-09-11 sur `MissionCreate`, `MissionRead`, `MissionUpdate` (`GET /openapi.json`) : aucun champ de type/catégorie, et aucune ressource de ce nom n'existe dans le schéma.
+**Constaté (2026-09-11)** : besoin identifié côté UI — un Admin doit pouvoir définir des types de mission (ex. "Inspection préventive", "Urgence") pour son entreprise, et ses techniciens doivent pouvoir en choisir un (optionnel) à la création d'une mission, en ne voyant que les types de leur propre entreprise.
+**Impact frontend** : contrairement aux réglages d'entreprise (§2), une simple persistance locale (`localStorage`) est ici insuffisante : l'Admin et ses techniciens sont deux comptes différents, sur des appareils différents — un stockage côté navigateur de l'un n'est jamais visible par l'autre. Cette fonctionnalité nécessite une vraie ressource persistée côté API pour être utilisable. En attendant, le frontend est câblé contre le contrat proposé ci-dessous (voir `src/lib/api/backendTypes.ts`, `BackendMissionType` et `BackendMission.type_mission_uuid`) — les appels réels échoueront (404) tant que l'endpoint n'existe pas côté serveur ; le mode `VITE_USE_MOCKS=true` simule la fonctionnalité en attendant.
+**Proposition** :
+- Nouvelle ressource `TypeMission`, volontairement minimale : `uuid`, `nom` (string, requis), `entreprise_id` (déduit du compte Admin appelant à la création, jamais dans le payload — même principe que `POST /users/team`), `created_at`.
+- `POST /api/v1/types-mission/` — réservé ADMIN, `entreprise_id` forcé côté serveur. Corps : `{ "nom": string }`.
+- `GET /api/v1/types-mission/` — accessible ADMIN et UTILISATEUR (technicien), chacun scoped automatiquement à sa propre entreprise (jamais de paramètre `entreprise_id` côté appelant). Pagination standard (`PaginatedListResponse`), comme les autres listes.
+- `DELETE /api/v1/types-mission/{uuid}` — réservé ADMIN (à l'entreprise du type). Suppression logique ou physique au choix du backend ; le frontend ne dépend pas d'une réactivation ultérieure pour ce besoin.
+- Sur `Mission` : ajouter `type_mission_uuid` (`uuid | null`, optionnel — une mission peut ne pas avoir de type) à `MissionCreate` et `MissionRead`. Idéalement aussi modifiable via `MissionUpdate` (contrairement à `appareil`, changer le type après création n'a pas d'impact fonctionnel côté vol/capture).
+- Pas de `PATCH` de renommage prévu pour cette itération frontend (un type se supprime/recrée) — à ajouter plus tard si besoin.
+
 ---
 
 *(entrées suivantes ajoutées au fil de la construction des écrans Techniciens / Missions entreprise)*

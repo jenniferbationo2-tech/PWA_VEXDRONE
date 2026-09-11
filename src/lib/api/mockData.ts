@@ -1,4 +1,4 @@
-import type { Anomaly, DashboardSummary, Drone, Entreprise, Flight, Mission, PlatformUser, Report } from "./types";
+import type { Anomaly, DashboardSummary, Drone, Entreprise, Flight, Mission, MissionType, PlatformUser, Report } from "./types";
 
 export const mockDrones: Drone[] = [
   { id: "d-1", identifiant: "DRONE-01", modele: "DJI Mavic 3T", status: "disponible", createdAt: "2026-01-15T09:00:00Z" },
@@ -79,6 +79,15 @@ export const mockDashboardSummary: DashboardSummary = {
   ],
 };
 
+// Créés par un Admin (voir MissionTypesModal), visibles par ses techniciens
+// dans NewMissionModal — ressource pas encore livrée côté backend (voir
+// BACKEND_REQUESTS.md §5), simulée ici en mode mock uniquement.
+export const mockMissionTypes: MissionType[] = [
+  { id: "mt-1", name: "Inspection préventive", createdAt: "2026-02-01T09:00:00Z" },
+  { id: "mt-2", name: "Inspection curative", createdAt: "2026-02-01T09:05:00Z" },
+  { id: "mt-3", name: "Urgence", createdAt: "2026-06-15T09:00:00Z" },
+];
+
 export const mockMissions: Mission[] = [
   {
     id: "m-1",
@@ -90,6 +99,7 @@ export const mockMissions: Mission[] = [
     status: "terminee",
     appareil: "drone",
     droneId: "d-1",
+    typeMissionId: "mt-1",
     userId: "u-2",
     createdAt: "2026-03-05T08:00:00Z",
   },
@@ -103,6 +113,7 @@ export const mockMissions: Mission[] = [
     status: "en_cours",
     appareil: "drone",
     droneId: "d-2",
+    typeMissionId: "mt-3",
     userId: "u-2",
     createdAt: "2026-07-20T08:00:00Z",
   },

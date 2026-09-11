@@ -130,6 +130,7 @@ export function Vols() {
         status: "terminee",
         appareil: mission.appareil,
         droneId: mission.droneId,
+        typeMissionId: mission.typeMissionId,
       });
     },
     onSuccess: () => {

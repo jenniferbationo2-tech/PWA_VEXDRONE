@@ -39,7 +39,7 @@ function DefaultRedirect() {
 
 export function App() {
   return (
-    <BrowserRouter>
+    <BrowserRouter future={{ v7_relativeSplatPath: true }}>
       <ThemeProvider>
         <AuthProvider>
           <NotificationProvider>

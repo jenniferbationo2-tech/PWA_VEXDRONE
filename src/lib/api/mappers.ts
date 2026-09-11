@@ -1,5 +1,6 @@
 import type {
   Mission,
+  MissionType,
   Anomaly,
   Flight,
   ImageAnalysisStatus,
@@ -14,6 +15,7 @@ import type {
 import type {
   BackendAnomalyType,
   BackendMission,
+  BackendMissionType,
   BackendAnomaly,
   BackendDrone,
   BackendEntreprise,
@@ -95,7 +97,16 @@ export function toMission(raw: BackendMission): Mission {
     status: toMissionStatus(raw.statut),
     appareil: raw.appareil,
     droneId: raw.drone_uuid ?? undefined,
+    typeMissionId: raw.type_mission_uuid ?? undefined,
     userId: String(raw.user_id),
+    createdAt: raw.created_at,
+  };
+}
+
+export function toMissionType(raw: BackendMissionType): MissionType {
+  return {
+    id: raw.uuid,
+    name: raw.nom,
     createdAt: raw.created_at,
   };
 }

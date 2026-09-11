@@ -8,9 +8,11 @@ import type {
   Mission,
   MissionImage,
   MissionStatus,
+  MissionType,
   NewAdminInput,
   NewDroneInput,
   NewMissionInput,
+  NewMissionTypeInput,
   NewTeamMemberInput,
   Paginated,
   PlatformUser,
@@ -23,6 +25,7 @@ import {
   mockDrones,
   mockEntreprises,
   mockMissions,
+  mockMissionTypes,
   mockPlatformUsers,
   mockTeamMembers,
   mockReports,
@@ -39,6 +42,7 @@ import {
   toFlight,
   toMission,
   toMissionImage,
+  toMissionType,
   toPlatformUser,
   toReport,
 } from "./mappers";
@@ -51,6 +55,7 @@ import type {
   BackendEntrepriseSettings,
   BackendImage,
   BackendMission,
+  BackendMissionType,
   BackendPlatformUser,
   BackendReport,
   BackendVideo,
@@ -174,6 +179,7 @@ function missionCreatePayload(input: NewMissionInput) {
     drone_uuid: input.appareil === "drone" ? input.droneId : undefined,
     statut: toBackendMissionStatus(input.status),
     description: input.description,
+    type_mission_uuid: input.typeMissionId || undefined,
   };
 }
 
@@ -185,6 +191,7 @@ function missionUpdatePayload(input: NewMissionInput) {
     date_fin: input.dateFin,
     statut: toBackendMissionStatus(input.status),
     description: input.description,
+    type_mission_uuid: input.typeMissionId || undefined,
   };
 }
 
@@ -422,6 +429,38 @@ export const api = {
       return delay(undefined, 300);
     }
     await apiFetch<void>(`/api/v1/missions/${id}`, { method: "DELETE" });
+  },
+
+  // Créés par un ADMIN (voir MissionTypesModal), lus par ses techniciens dans
+  // NewMissionModal — chacun scoped côté serveur à sa propre entreprise, comme
+  // /users/team (jamais de entreprise_id dans les payloads). Ressource
+  // proposée, pas encore livrée côté backend — voir BACKEND_REQUESTS.md §5.
+  getMissionTypes: async (): Promise<MissionType[]> => {
+    if (USE_MOCKS) return delay(sortByNewestFirst(mockMissionTypes, (t) => t.createdAt));
+    const raw = await apiFetch<{ data: BackendMissionType[] }>("/api/v1/types-mission/?items_per_page=100");
+    return sortByNewestFirst(raw.data.map(toMissionType), (t) => t.createdAt);
+  },
+
+  createMissionType: async (input: NewMissionTypeInput): Promise<MissionType> => {
+    if (USE_MOCKS) {
+      const type: MissionType = { id: `mt-${Date.now()}`, name: input.name, createdAt: new Date().toISOString() };
+      mockMissionTypes.unshift(type);
+      return delay(type, 300);
+    }
+    const raw = await apiFetch<BackendMissionType>("/api/v1/types-mission/", {
+      method: "POST",
+      body: JSON.stringify({ nom: input.name }),
+    });
+    return toMissionType(raw);
+  },
+
+  deleteMissionType: async (id: string): Promise<void> => {
+    if (USE_MOCKS) {
+      const index = mockMissionTypes.findIndex((t) => t.id === id);
+      if (index !== -1) mockMissionTypes.splice(index, 1);
+      return delay(undefined, 300);
+    }
+    await apiFetch<void>(`/api/v1/types-mission/${id}`, { method: "DELETE" });
   },
 
   getDrones: async (): Promise<Drone[]> => {

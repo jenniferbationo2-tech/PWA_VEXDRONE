@@ -1,10 +1,12 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Tags } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/Pagination";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
+import { MissionTypesModal } from "@/components/admin/missions/MissionTypesModal";
 import type { MissionStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
 import { MISSION_STATUS_BADGE, formatMissionDateRange } from "@/lib/missionStatus";
@@ -22,9 +24,13 @@ const ITEMS_PER_PAGE = 10;
 export function AdminMissions() {
   const [filter, setFilter] = useState<MissionStatus | "toutes">("toutes");
   const [page, setPage] = useState(1);
+  const [typesModalOpen, setTypesModalOpen] = useState(false);
 
   const { data: members } = useQuery({ queryKey: ["team-members"], queryFn: api.getTeamMembers });
   const technicienName = (userId?: string) => members?.find((m) => m.id === userId)?.name ?? "—";
+
+  const { data: missionTypes } = useQuery({ queryKey: ["mission-types"], queryFn: api.getMissionTypes });
+  const typeName = (typeMissionId?: string) => missionTypes?.find((t) => t.id === typeMissionId)?.name ?? "—";
 
   // Chargée en une fois (comme les autres listes admin) plutôt que paginée
   // côté serveur : l'API n'a aucun paramètre de tri, donc la page 1 d'une
@@ -60,7 +66,13 @@ export function AdminMissions() {
 
   return (
     <div>
-      <h1 className="mb-6">Missions de l'entreprise</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <h1>Missions de l'entreprise</h1>
+        <Button size="sm" className="gap-2" onClick={() => setTypesModalOpen(true)}>
+          <Tags size={16} strokeWidth={1.75} />
+          Gérer les types de mission
+        </Button>
+      </div>
 
       <div className="mb-4 flex flex-wrap gap-2">
         {FILTERS.map((f) => (
@@ -80,7 +92,7 @@ export function AdminMissions() {
       </div>
 
       {isLoading ? (
-        <TableSkeleton columns={5} />
+        <TableSkeleton columns={6} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card dark:border-white/10 dark:bg-brand-blue-dark">
           <p className="font-semibold text-brand-blue-dark dark:text-white">Impossible de charger les missions</p>
@@ -103,6 +115,7 @@ export function AdminMissions() {
                     <th className="px-5 py-3 font-medium">Titre</th>
                     <th className="px-5 py-3 font-medium">Zone</th>
                     <th className="px-5 py-3 font-medium">Technicien</th>
+                    <th className="px-5 py-3 font-medium">Type</th>
                     <th className="px-5 py-3 font-medium">Statut</th>
                     <th className="px-5 py-3 font-medium">Dates</th>
                   </tr>
@@ -116,6 +129,7 @@ export function AdminMissions() {
                       <td className="px-5 py-3.5 font-semibold text-brand-blue-dark dark:text-white">{mission.name}</td>
                       <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">{mission.zone}</td>
                       <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">{technicienName(mission.userId)}</td>
+                      <td className="px-5 py-3.5 text-brand-gray dark:text-white/60">{typeName(mission.typeMissionId)}</td>
                       <td className="px-5 py-3.5">
                         <Badge variant={MISSION_STATUS_BADGE[mission.status].variant}>{MISSION_STATUS_BADGE[mission.status].label}</Badge>
                       </td>
@@ -143,6 +157,7 @@ export function AdminMissions() {
                 <div className="space-y-1 text-[13px] text-brand-gray dark:text-white/60">
                   <p>{mission.zone}</p>
                   <p>{technicienName(mission.userId)}</p>
+                  <p>{typeName(mission.typeMissionId)}</p>
                   <p>{formatMissionDateRange(mission.dateDebut, mission.dateFin)}</p>
                 </div>
               </div>
@@ -158,6 +173,8 @@ export function AdminMissions() {
           />
         </>
       )}
+
+      <MissionTypesModal open={typesModalOpen} onClose={() => setTypesModalOpen(false)} />
     </div>
   );
 }
