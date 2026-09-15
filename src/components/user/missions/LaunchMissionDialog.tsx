@@ -1,16 +1,17 @@
 import { useEffect, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, UploadCloud, Video } from "lucide-react";
+import { Loader2, Monitor, Smartphone, UploadCloud, Video } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import { cn } from "@/lib/utils";
 import type { Mission } from "@/lib/api/types";
 import type { CaptureMode } from "@/lib/captureMode";
+import type { CameraSource } from "@/lib/cameraSource";
 
 interface Props {
   mission: Mission | null;
   onCancel: () => void;
-  onLaunch: (mission: Mission, mode: CaptureMode) => void;
+  onLaunch: (mission: Mission, mode: CaptureMode, cameraSource: CameraSource) => void;
   isLaunching: boolean;
 }
 
@@ -22,10 +23,14 @@ interface Props {
 // jamais eu de choix à faire.
 export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }: Props) {
   const [mode, setMode] = useState<CaptureMode>("streaming");
+  const [cameraSource, setCameraSource] = useState<CameraSource>("locale");
   const streamingAvailable = mission?.appareil === "appareil_photo";
 
   useEffect(() => {
-    if (mission) setMode(streamingAvailable ? "streaming" : "differe");
+    if (mission) {
+      setMode(streamingAvailable ? "streaming" : "differe");
+      setCameraSource("locale");
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mission]);
 
@@ -41,7 +46,7 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
           transition={overlayTransition}
         >
           <motion.div
-            className="w-full max-w-md rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
             variants={modalVariants}
             initial="hidden"
             animate="visible"
@@ -97,11 +102,59 @@ export function LaunchMissionDialog({ mission, onCancel, onLaunch, isLaunching }
           </button>
         </div>
 
+        {mode === "streaming" && streamingAvailable && (
+          <div className="mb-5">
+            <p className="mb-2 text-[12px] font-semibold text-brand-blue-dark dark:text-white/80">
+              Quelle caméra filme la mission ?
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => setCameraSource("locale")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-md border p-3 text-center transition-colors",
+                  cameraSource === "locale"
+                    ? "border-brand-blue bg-brand-blue/5 dark:border-white dark:bg-white/10"
+                    : "border-brand-gray/20 hover:bg-brand-off-white dark:border-white/15 dark:hover:bg-white/5"
+                )}
+              >
+                <Monitor size={20} className="text-brand-blue dark:text-white" strokeWidth={1.5} />
+                <span className="text-[12px] font-semibold text-brand-blue-dark dark:text-white">
+                  Caméra locale
+                </span>
+                <span className="text-[11px] text-brand-gray dark:text-white/50">Cet ordinateur</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setCameraSource("distante")}
+                className={cn(
+                  "flex flex-col items-center gap-2 rounded-md border p-3 text-center transition-colors",
+                  cameraSource === "distante"
+                    ? "border-brand-blue bg-brand-blue/5 dark:border-white dark:bg-white/10"
+                    : "border-brand-gray/20 hover:bg-brand-off-white dark:border-white/15 dark:hover:bg-white/5"
+                )}
+              >
+                <Smartphone size={20} className="text-brand-blue dark:text-white" strokeWidth={1.5} />
+                <span className="text-[12px] font-semibold text-brand-blue-dark dark:text-white">
+                  Caméra distante
+                </span>
+                <span className="text-[11px] text-brand-gray dark:text-white/50">Un téléphone à appairer</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex justify-end gap-2.5">
           <Button type="button" variant="secondary" size="sm" onClick={onCancel} disabled={isLaunching}>
             Annuler
           </Button>
-          <Button type="button" size="sm" onClick={() => onLaunch(mission, mode)} disabled={isLaunching}>
+          <Button
+            type="button"
+            size="sm"
+            onClick={() => onLaunch(mission, mode, mode === "streaming" ? cameraSource : "locale")}
+            disabled={isLaunching}
+          >
             {isLaunching && <Loader2 size={14} className="animate-spin" />}
             Lancer
           </Button>

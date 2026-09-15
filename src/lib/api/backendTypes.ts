@@ -19,17 +19,18 @@ export interface BackendMission {
   // (GET /missions/entreprise), absent des autres écrans qui n'affichent que
   // les missions de l'utilisateur courant.
   user_id: number;
-  // PROPOSITION pas encore livrée côté backend (voir BACKEND_REQUESTS.md §5) —
-  // absent de MissionCreate/MissionRead sur le schéma live vérifié le
-  // 2026-09-11. Champ optionnel : une mission peut ne pas avoir de type.
+  // Optionnel : une mission peut ne pas avoir de type (voir TypeMission
+  // ci-dessous). Toujours scopé à l'entreprise de l'appelant côté serveur —
+  // un uuid valide mais d'une autre entreprise renvoie 404, pas 403 (pour ne
+  // pas révéler qu'un identifiant existe ailleurs).
   type_mission_uuid: string | null;
   created_at: string;
   updated_at: string | null;
 }
 
-// PROPOSITION pas encore livrée côté backend (voir BACKEND_REQUESTS.md §5) —
-// aucune ressource ni endpoint de ce nom n'existe sur le schéma live vérifié
-// le 2026-09-11.
+// POST/GET /types-mission/, DELETE /types-mission/{uuid} — aucun de ces
+// endpoints ne prend de paramètre d'entreprise côté appelant, elle est
+// toujours déduite du compte ADMIN/UTILISATEUR connecté.
 export interface BackendMissionType {
   uuid: string;
   nom: string;

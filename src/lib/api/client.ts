@@ -135,6 +135,26 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
   return data;
 }
 
+// Variante de apiFetch pour le polling de signalisation WebRTC (offer/answer,
+// voir plus bas) : un 404 pendant qu'on attend que l'autre pair dépose son
+// SDP n'est pas une erreur, juste "pas encore prêt" — apiFetch lèverait ici à
+// chaque tour de poll. Réservé à ce cas précis, ne remplace pas apiFetch pour
+// le reste (403 CSRF non géré ici : ces endpoints ne portent pas de session).
+async function apiFetchOrNull404<T>(path: string): Promise<T | null> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(`${BASE_URL}${path}`, { credentials: "include", signal: timeout }).catch((err) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+    }
+    throw err;
+  });
+  if (res.status === 404) return null;
+  if (!res.ok) {
+    throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
+  }
+  return res.json();
+}
+
 // multipart/form-data : ne peut pas passer par apiFetch, qui force
 // Content-Type: application/json (casserait la frontière multipart — le
 // navigateur doit fixer lui-même le boundary).
@@ -381,7 +401,7 @@ export const api = {
     // Trié une seule fois ici (plus récent en premier) : toutes les pages qui
     // consomment ["missions"] en héritent sans avoir à re-trier elles-mêmes.
     if (USE_MOCKS) return delay(sortByNewestFirst(mockMissions, (m) => m.createdAt));
-    const raw = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/");
+    const raw = await apiFetch<{ data: BackendMission[] }>("/api/v1/missions/?items_per_page=100");
     return sortByNewestFirst(raw.data.map(toMission), (m) => m.createdAt);
   },
 
@@ -647,6 +667,31 @@ export const api = {
       body: JSON.stringify({ mission_uuid: missionId, capture_mode: captureMode }),
     });
     return toFlight(raw);
+  },
+
+  // Signalisation WebRTC pour le mode "Caméra distante" (voir
+  // PhoneCaptureContext.tsx / PhoneSender.tsx) — pas de branche USE_MOCKS ici,
+  // une vraie poignée de main entre deux appareils n'est pas mockable
+  // utilement. Contrat backend : voir doc "VEXDRONE — Téléphone comme caméra
+  // distante" transmise à l'équipe backend.
+  createPairingToken: async (flightId: string): Promise<{ token: string; expiresAt: string }> => {
+    return apiFetch(`/api/v1/vols/${flightId}/camera-distante/token`, { method: "POST" });
+  },
+
+  postSignalingOffer: async (token: string, offer: RTCSessionDescriptionInit): Promise<void> => {
+    await apiFetch(`/api/v1/webrtc/${token}/offer`, { method: "POST", body: JSON.stringify(offer) });
+  },
+
+  getSignalingOffer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
+    return apiFetchOrNull404(`/api/v1/webrtc/${token}/offer`);
+  },
+
+  postSignalingAnswer: async (token: string, answer: RTCSessionDescriptionInit): Promise<void> => {
+    await apiFetch(`/api/v1/webrtc/${token}/answer`, { method: "POST", body: JSON.stringify(answer) });
+  },
+
+  getSignalingAnswer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
+    return apiFetchOrNull404(`/api/v1/webrtc/${token}/answer`);
   },
 
   endFlight: async (flightId: string): Promise<void> => {

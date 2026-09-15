@@ -4,6 +4,8 @@ import { api } from "@/lib/api/client";
 import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
+import { getCameraSource } from "@/lib/cameraSource";
+import { STUN_SERVERS, waitForIceGatheringComplete, pollUntil } from "./webrtcSignaling";
 
 // Cadence de capture : alignée sur celle de l'extraction de frames vidéo côté
 // backend (1 image / 2s), avec un peu de marge pour laisser le temps à
@@ -27,22 +29,25 @@ export interface LiveDetection {
   bbox: { x: number; y: number; width: number; height: number };
 }
 
-// URL directe du backend pour le WebSocket : le proxy Vite /api en dev ne
-// relaie pas les upgrades WebSocket sans config dédiée (server.proxy ws:true),
-// donc on bypasse le proxy et on parle directement au backend, comme fait
-// ailleurs dans ce projet (voir vite.config.ts, même host). Dérivée de
-// VITE_API_BASE_URL si définie (prod), sinon le backend connu de ce POC.
+// En prod, VITE_API_BASE_URL pointe directement sur le backend : la WS s'y
+// connecte donc à la même origine que les requêtes HTTP classiques, cookie de
+// session compris. En dev, VITE_API_BASE_URL est vide et les requêtes HTTP
+// passent par le proxy Vite (/api → backend) — le cookie est donc scopé à
+// l'origine de la page (localhost), pas à onrender.com. La WS doit donc rester
+// sur la même origine que la page (relayée par le proxy, voir vite.config.ts,
+// server.proxy["/api"].ws: true) plutôt que de contourner le proxy : sinon le
+// handshake part sans cookie et le backend répond 403 (vécu en test le
+// 2026-09-13).
 function liveAnalyseUrl(flightId: string): string {
-  const httpBase = import.meta.env.VITE_API_BASE_URL || "https://vexdrone-osc.onrender.com";
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
+  const httpBase = apiBaseUrl || window.location.origin;
   return `${httpBase.replace(/^http/, "ws")}/api/v1/vols/${flightId}/live-analyse`;
 }
 
 // Même convention de champs que BackendAnomaly (type_anomalie, confiance,
-// bbox_x/y/largeur/hauteur, voir backendTypes.ts) — pas encore confirmée
-// spécifiquement pour ce flux WebSocket au moment d'écrire ce câblage
-// (endpoint tout juste livré), à ajuster si le payload réel diffère. Une
-// détection dont la forme ne correspond pas est ignorée plutôt que de
-// planter tout le lot.
+// bbox_x/y/largeur/hauteur, voir backendTypes.ts) — confirmé conforme au doc
+// d'intégration backend du 2026-09-11 (§3.2). Une détection dont la forme ne
+// correspond pas est ignorée plutôt que de planter tout le lot.
 function toLiveDetection(raw: unknown): LiveDetection | null {
   if (!raw || typeof raw !== "object") return null;
   const d = raw as Record<string, unknown>;
@@ -85,6 +90,10 @@ interface PhoneCaptureContextType {
   // superposer les boites sur la video live (voir Vols.tsx). Vide hors
   // streaming ou tant qu'aucune reponse n'est encore arrivee.
   liveDetections: LiveDetection[];
+  // Lien d'appairage (QR code, voir Vols.tsx) pendant qu'on attend la
+  // connexion WebRTC du telephone en mode camera "distante" — null hors de
+  // ce mode, ou une fois le flux recu (voir beginCapturing).
+  pairingUrl: string | null;
 }
 
 const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
@@ -95,6 +104,7 @@ const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
   consecutiveFailures: 0,
   stopCaptureNow: () => {},
   liveDetections: [],
+  pairingUrl: null,
 });
 
 export function usePhoneCapture() {
@@ -148,14 +158,23 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const [lastCaptureAt, setLastCaptureAt] = useState<number | null>(null);
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([]);
+  const [pairingUrl, setPairingUrl] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const pcRef = useRef<RTCPeerConnection | null>(null);
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlightIdRef = useRef<string | null>(null);
   const imagesCapturedRef = useRef(0);
   const liveWsRef = useRef<WebSocket | null>(null);
   const liveFrameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Incremente au debut de chaque tentative (start/startRemote) et dans
+  // stop() : permet a une tentative startRemote() en cours (poignee de main
+  // WebRTC = plusieurs dizaines de secondes, contrairement a getUserMedia
+  // local) de detecter qu'elle a ete rendue obsolete par un stop() ou une
+  // nouvelle tentative, et d'abandonner proprement plutot que de faire
+  // resurgir une session censee etre terminee.
+  const captureAttemptRef = useRef(0);
   // Vol arrete manuellement (bouton "Terminer") : tant que ["active-flight"]
   // n'a pas rattrape ce changement (peut prendre plusieurs secondes si le
   // backend est lent a repondre), le flight en cache reste "en_cours" — sans
@@ -320,8 +339,32 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         // Reponse non-JSON ou inattendue : ignoree, la prochaine frame retentera.
       }
     };
-    ws.onclose = () => {
-      if (liveWsRef.current === ws) liveWsRef.current = null;
+    ws.onclose = (event) => {
+      if (liveWsRef.current !== ws) return;
+      liveWsRef.current = null;
+      if (liveFrameIntervalRef.current) {
+        clearInterval(liveFrameIntervalRef.current);
+        liveFrameIntervalRef.current = null;
+      }
+      setLiveDetections([]);
+      // Codes documentés par le backend (doc du 2026-09-11, §3.1) — dans les
+      // deux cas la capture/upload des photos continue normalement (l'analyse
+      // officielle se fait sur les photos une fois uploadées), seul l'aperçu
+      // live s'arrête. Pas de reconnexion auto : ça n'aiderait pas si le
+      // modèle est déjà saturé (2 analyses simultanées max côté serveur), et
+      // ça risquerait d'aggraver la saturation si plusieurs techniciens
+      // retentent en même temps.
+      if (event.code === 1011) {
+        addNotification({
+          title: "Analyse IA en direct indisponible",
+          message: "Le modèle d'analyse est temporairement surchargé — la capture continue normalement, l'analyse officielle se fera sur les photos uploadées.",
+        });
+      } else if (event.code === 1008) {
+        addNotification({
+          title: "Analyse en direct interrompue",
+          message: "La connexion au flux d'analyse en direct a été refusée — la capture continue normalement.",
+        });
+      }
     };
     ws.onerror = () => {
       // Best-effort, meme logique que captureOnce : une erreur ponctuelle ne
@@ -347,47 +390,158 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     }, CAPTURE_INTERVAL_MS);
   }
 
+  // Fin commune une fois un MediaStream obtenu, qu'il vienne de getUserMedia
+  // (start, ci-dessous) ou d'un pair WebRTC distant (startRemote) — ni l'un
+  // ni l'autre appelant n'a besoin de savoir comment l'autre est arrive ici.
+  function beginCapturing(mediaStream: MediaStream, missionId: string, flightId: string, startingCount: number) {
+    streamRef.current = mediaStream;
+    if (videoRef.current) {
+      videoRef.current.srcObject = mediaStream;
+      videoRef.current.play().catch(() => {});
+    }
+    imagesCapturedRef.current = startingCount;
+    setIsCapturing(true);
+    setStream(mediaStream);
+    setPairingUrl(null);
+    addNotification({
+      title: "Capture en direct démarrée",
+      message: "Le téléphone capture et analyse en continu, même si tu changes d'écran.",
+    });
+    scheduleNext(missionId, flightId);
+    startLiveAnalyse(flightId);
+  }
+
   async function start(missionId: string, flightId: string, startingCount: number) {
     setError(null);
     setLastCaptureAt(null);
     setConsecutiveFailures(0);
     alertedRef.current = false;
+    captureAttemptRef.current += 1;
+    const myAttempt = captureAttemptRef.current;
+    // Fixe avant le premier await (pas seulement au succes) : sinon l'effet
+    // shouldCapture, qui re-tourne a chaque poll de ["active-flight"] (4s),
+    // relancerait un getUserMedia en parallele tant que celui-ci n'a pas
+    // resolu (ex. attente de la reponse au prompt de permission navigateur).
+    activeFlightIdRef.current = flightId;
     try {
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: { facingMode: "environment" },
         audio: false,
       });
-      streamRef.current = mediaStream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = mediaStream;
-        await videoRef.current.play();
+      if (captureAttemptRef.current !== myAttempt) {
+        mediaStream.getTracks().forEach((t) => t.stop());
+        return;
       }
-      activeFlightIdRef.current = flightId;
-      imagesCapturedRef.current = startingCount;
-      setIsCapturing(true);
-      setStream(mediaStream);
-      addNotification({
-        title: "Capture en direct démarrée",
-        message: "Le téléphone capture et analyse en continu, même si tu changes d'écran.",
-      });
-      scheduleNext(missionId, flightId);
-      startLiveAnalyse(flightId);
+      beginCapturing(mediaStream, missionId, flightId, startingCount);
     } catch (err) {
+      if (captureAttemptRef.current !== myAttempt) return;
       const message =
         err instanceof Error && err.name === "NotAllowedError"
           ? "Accès à la caméra refusé — autorise la caméra pour capturer en direct."
           : "Impossible d'accéder à la caméra du téléphone.";
       setError(message);
+      activeFlightIdRef.current = null;
       addNotification({ title: "Capture en direct impossible", message });
     }
   }
 
+  function waitForRemoteTrack(pc: RTCPeerConnection, timeoutMs: number): Promise<MediaStream> {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("Délai dépassé en attendant le flux du téléphone.")),
+        timeoutMs
+      );
+      pc.ontrack = (event) => {
+        clearTimeout(timeout);
+        resolve(event.streams[0]);
+      };
+    });
+  }
+
+  // Equivalent de start(), mais la camera vient d'un telephone distant via
+  // WebRTC au lieu de getUserMedia local — voir beginCapturing pour ce qui
+  // est strictement identique aux deux chemins. Signalisation en HTTP
+  // polling (pas de WS, voir webrtcSignaling.ts) et ICE non-trickle (on
+  // attend la collecte complete avant d'envoyer chaque SDP).
+  async function startRemote(missionId: string, flightId: string, startingCount: number) {
+    setError(null);
+    setLastCaptureAt(null);
+    setConsecutiveFailures(0);
+    alertedRef.current = false;
+    captureAttemptRef.current += 1;
+    const myAttempt = captureAttemptRef.current;
+    const isStale = () => captureAttemptRef.current !== myAttempt;
+    activeFlightIdRef.current = flightId;
+
+    const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
+    pcRef.current = pc;
+    // Surveille la connexion une fois etablie, pas seulement pendant la
+    // poignee de main : une coupure WiFi cote telephone laisserait sinon le
+    // <video> afficher sa derniere frame indefiniment, sans jamais remonter
+    // d'erreur, pendant que captureOnce continuerait d'uploader cette meme
+    // frame perimee toutes les 3s. stop() reinitialise activeFlightIdRef,
+    // donc l'effet shouldCapture relancera automatiquement un nouvel
+    // appairage (nouveau QR) au prochain poll si la mission tourne encore.
+    pc.onconnectionstatechange = () => {
+      if (isStale()) return;
+      if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+        stop();
+      }
+    };
+
+    try {
+      const { token } = await api.createPairingToken(flightId);
+      if (isStale()) {
+        pc.close();
+        return;
+      }
+      setPairingUrl(`${window.location.origin}/pair/${token}`);
+
+      pc.addTransceiver("video", { direction: "recvonly" });
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      await waitForIceGatheringComplete(pc);
+      if (isStale()) {
+        pc.close();
+        return;
+      }
+      await api.postSignalingOffer(token, pc.localDescription!);
+
+      const answer = await pollUntil(() => api.getSignalingAnswer(token), { intervalMs: 2000, timeoutMs: 60_000 });
+      if (isStale()) {
+        pc.close();
+        return;
+      }
+      await pc.setRemoteDescription(answer);
+
+      const mediaStream = await waitForRemoteTrack(pc, 45_000);
+      if (isStale()) {
+        pc.close();
+        return;
+      }
+      beginCapturing(mediaStream, missionId, flightId, startingCount);
+    } catch (err) {
+      if (isStale()) return;
+      pc.close();
+      if (pcRef.current === pc) pcRef.current = null;
+      setPairingUrl(null);
+      activeFlightIdRef.current = null;
+      const message = "Connexion au téléphone impossible — réessaie ou repasse en caméra locale.";
+      setError(message);
+      addNotification({ title: "Caméra distante indisponible", message });
+    }
+  }
+
   function stop() {
+    captureAttemptRef.current += 1;
     activeFlightIdRef.current = null;
     if (timeoutRef.current) clearTimeout(timeoutRef.current);
     timeoutRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
+    pcRef.current?.close();
+    pcRef.current = null;
+    setPairingUrl(null);
     setIsCapturing(false);
     setStream(null);
     stopLiveAnalyse();
@@ -409,12 +563,19 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     // indisponible) : on retombe sur l'ancien comportement, streaming par
     // défaut pour une mission téléphone.
     const isUploadMode = mission ? getCaptureMode(mission.id) === "differe" : false;
+    // Idem pour la source caméra : pas de choix enregistré -> caméra locale,
+    // comportement d'avant l'ajout du mode "distante".
+    const cameraSource = mission ? getCameraSource(mission.id) : "locale";
     const wasManuallyStopped = flight.id === manuallyStoppedFlightIdRef.current;
     const shouldCapture =
       mission?.appareil === "appareil_photo" && flight.status === "en_cours" && !isUploadMode && !wasManuallyStopped;
 
     if (shouldCapture && mission && activeFlightIdRef.current !== flight.id) {
-      start(mission.id, flight.id, flight.imagesCaptured);
+      if (cameraSource === "distante") {
+        startRemote(mission.id, flight.id, flight.imagesCaptured);
+      } else {
+        start(mission.id, flight.id, flight.imagesCaptured);
+      }
     } else if (!shouldCapture && activeFlightIdRef.current) {
       stop();
     }
@@ -426,7 +587,16 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
   return (
     <PhoneCaptureContext.Provider
-      value={{ isCapturing, error, stream, lastCaptureAt, consecutiveFailures, stopCaptureNow, liveDetections }}
+      value={{
+        isCapturing,
+        error,
+        stream,
+        lastCaptureAt,
+        consecutiveFailures,
+        stopCaptureNow,
+        liveDetections,
+        pairingUrl,
+      }}
     >
       {children}
       <video ref={videoRef} className="hidden" muted playsInline />

@@ -1,7 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Smartphone, PlaneTakeoff } from "lucide-react";
+import { X, Smartphone, PlaneTakeoff, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { isPastDate } from "@/lib/missionStatus";
@@ -21,6 +21,110 @@ const APPAREIL_OPTIONS: { value: CaptureDevice; label: string; icon: typeof Smar
   { value: "appareil_photo", label: "Téléphone", icon: Smartphone },
   { value: "drone", label: "Drone", icon: PlaneTakeoff },
 ];
+
+// <select> natif remplacé par ce dropdown custom : la liste déroulante d'un
+// <select> est rendue par l'OS/navigateur et ignore le thème sombre de ce
+// modal (même correctif que le sélecteur "Mission" de MediaAnalysisCard.tsx).
+// Le premier item de la liste reste l'équivalent de l'ancienne <option
+// value=""> — un choix "vide" explicite, pas juste un texte d'invite.
+function SelectDropdown({
+  value,
+  onChange,
+  options,
+  placeholder,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  options: { value: string; label: string }[];
+  placeholder: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const fieldRef = useRef<HTMLDivElement>(null);
+  const selected = options.find((o) => o.value === value) ?? null;
+
+  useEffect(() => {
+    if (!open) return;
+    function onPointerDown(e: MouseEvent) {
+      if (fieldRef.current && !fieldRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpen(false);
+    }
+    document.addEventListener("mousedown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div ref={fieldRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="flex h-10 w-full items-center justify-between gap-2 rounded-sm border border-white/15 bg-white/5 px-3 text-left text-[14px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
+      >
+        <span className={cn("truncate", !selected && "text-white/50")}>{selected ? selected.label : placeholder}</span>
+        <ChevronDown
+          size={16}
+          className={cn("flex-shrink-0 text-white/50 transition-transform duration-150", open && "rotate-180")}
+        />
+      </button>
+
+      <AnimatePresence>
+        {open && (
+          <motion.ul
+            role="listbox"
+            initial={{ opacity: 0, scale: 0.97, y: -4 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.97, y: -4 }}
+            transition={{ duration: 0.15, ease: [0.16, 1, 0.3, 1] }}
+            style={{ transformOrigin: "top" }}
+            className="absolute left-0 right-0 top-full z-50 mt-1.5 max-h-56 overflow-auto rounded-lg border border-white/10 bg-brand-blue-dark/95 py-1.5 shadow-card-hover backdrop-blur-md"
+          >
+            <li role="option" aria-selected={!value}>
+              <button
+                type="button"
+                onClick={() => {
+                  onChange("");
+                  setOpen(false);
+                }}
+                className={cn(
+                  "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-white/70 transition-colors hover:bg-white/10",
+                  !value && "bg-brand-orange/15 text-white"
+                )}
+              >
+                {placeholder}
+                {!value && <Check size={14} className="flex-shrink-0 text-brand-orange" />}
+              </button>
+            </li>
+            {options.map((o) => (
+              <li key={o.value} role="option" aria-selected={o.value === value}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    onChange(o.value);
+                    setOpen(false);
+                  }}
+                  className={cn(
+                    "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-[13px] text-white/90 transition-colors hover:bg-white/10",
+                    o.value === value && "bg-brand-orange/15 text-white"
+                  )}
+                >
+                  <span className="truncate">{o.label}</span>
+                  {o.value === value && <Check size={14} className="flex-shrink-0 text-brand-orange" />}
+                </button>
+              </li>
+            ))}
+          </motion.ul>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
   const isEditMode = !!mission;
@@ -146,7 +250,7 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
           transition={overlayTransition}
         >
           <motion.div
-            className="w-full max-w-md rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
+            className="max-h-[85vh] w-full max-w-md overflow-y-auto rounded-lg border border-white/10 bg-brand-blue-dark/80 p-6 shadow-2xl backdrop-blur-md"
             variants={modalVariants}
             initial="hidden"
             animate="visible"
@@ -202,19 +306,15 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
                   Aucun drone disponible actuellement.
                 </p>
               ) : (
-                <select
+                <SelectDropdown
                   value={droneId}
-                  onChange={(e) => setDroneId(e.target.value)}
-                  className="h-10 w-full rounded-sm border border-white/15 bg-white/5 px-3 text-[14px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
-                >
-                  <option value="">Sélectionner un drone</option>
-                  {availableDrones.map((d) => (
-                    <option key={d.id} value={d.id}>
-                      {d.identifiant}
-                      {d.modele ? ` — ${d.modele}` : ""}
-                    </option>
-                  ))}
-                </select>
+                  onChange={setDroneId}
+                  placeholder="Sélectionner un drone"
+                  options={availableDrones.map((d) => ({
+                    value: d.id,
+                    label: d.identifiant + (d.modele ? ` — ${d.modele}` : ""),
+                  }))}
+                />
               )}
             </div>
           )}
@@ -228,18 +328,12 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
                 Aucun type défini par ton administrateur pour l'instant.
               </p>
             ) : (
-              <select
+              <SelectDropdown
                 value={typeMissionId}
-                onChange={(e) => setTypeMissionId(e.target.value)}
-                className="h-10 w-full rounded-sm border border-white/15 bg-white/5 px-3 text-[14px] text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-orange/40"
-              >
-                <option value="">Aucun type</option>
-                {missionTypes.map((t) => (
-                  <option key={t.id} value={t.id}>
-                    {t.name}
-                  </option>
-                ))}
-              </select>
+                onChange={setTypeMissionId}
+                placeholder="Aucun type"
+                options={missionTypes.map((t) => ({ value: t.id, label: t.name }))}
+              />
             )}
           </div>
 

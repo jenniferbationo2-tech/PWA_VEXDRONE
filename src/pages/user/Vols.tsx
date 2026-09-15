@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   CheckCircle2,
+  Copy,
   Loader2,
   Square,
   UploadCloud,
@@ -13,6 +14,7 @@ import {
   WifiOff,
   XCircle,
 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { api } from "@/lib/api/client";
 import type { FlightStatus } from "@/lib/api/types";
 import { cn } from "@/lib/utils";
@@ -24,23 +26,26 @@ import { Skeleton } from "@/components/ui/Skeleton";
 import { usePhoneCapture } from "@/lib/capture/PhoneCaptureContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
+import { getCameraSource } from "@/lib/cameraSource";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { toAnomalyTypeLabel } from "@/lib/api/mappers";
 
 // Palette par type_anomalie (pas par gravité, contrairement au reste de
-// l'app) — cohérente avec les 9 classes réelles du modèle IA, voir
-// backendTypes.ts. Couleur neutre en repli pour un type inconnu/"autre".
+// l'app) — palette officielle communiquée par le backend (doc d'intégration
+// du 2026-09-11, §3.3), pas une palette maison. Couleur neutre en repli pour
+// une valeur qui ne ferait partie d'aucune des 9 classes connues.
 const DETECTION_COLORS: Record<string, string> = {
   isolateur_casse: "#ef4444",
-  corrosion: "#f97316",
-  antenne_endommagee: "#eab308",
-  broken_tower: "#dc2626",
-  broken_cable: "#db2777",
-  vegetation_cautious: "#84cc16",
-  vegetation_critical: "#16a34a",
-  vegetation_low: "#65a30d",
+  broken_tower: "#b91c1c",
+  broken_cable: "#f97316",
+  corrosion: "#eab308",
+  antenne_endommagee: "#a855f7",
+  vegetation_critical: "#166534",
+  vegetation_cautious: "#22c55e",
+  vegetation_low: "#86efac",
+  autre: "#6b7280",
 };
-const DEFAULT_DETECTION_COLOR = "#64748b";
+const DEFAULT_DETECTION_COLOR = "#6b7280";
 
 const STEPS: { value: FlightStatus; label: string }[] = [
   { value: "en_attente", label: "En attente" },
@@ -72,6 +77,7 @@ export function Vols() {
     consecutiveFailures,
     stopCaptureNow,
     liveDetections,
+    pairingUrl,
   } = usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
   const liveOverlayRef = useRef<HTMLCanvasElement>(null);
@@ -161,6 +167,7 @@ export function Vols() {
   const activeMission = flight ? missions?.find((m) => m.id === flight.missionId) : undefined;
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
   const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "differe" : false;
+  const isRemoteCamera = activeMission ? getCameraSource(activeMission.id) === "distante" : false;
 
   // Vérification IA de la mission (statut_analyse par image, avec relances
   // automatiques) — sert à la fois la galerie ci-dessous et le bandeau de
@@ -214,6 +221,15 @@ export function Vols() {
       // qu'apres un reload manuel de la page.
       queryClient.invalidateQueries({ queryKey: ["reports"] });
       addNotification({ title: "Mission terminée", message: "Le vol a été clôturé." });
+    },
+    // Sans ca, un echec (ex. mission introuvable dans le cache) referme la
+    // boite de dialogue sur "Clôture…" -> "Terminer" sans aucun signal — on
+    // dirait que le clic n'a rien fait alors que la mutation a bien echoue.
+    onError: (err) => {
+      addNotification({
+        title: "Impossible de terminer la mission",
+        message: err instanceof Error ? err.message : "Une erreur inattendue est survenue.",
+      });
     },
   });
 
@@ -517,6 +533,28 @@ export function Vols() {
                     className="h-[180px] w-full bg-black object-cover"
                   />
                   <canvas ref={liveOverlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+                </div>
+              ) : isRemoteCamera && !captureError && pairingUrl ? (
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white p-3 text-center dark:bg-white/5">
+                  <div className="rounded-md bg-white p-2">
+                    <QRCodeSVG value={pairingUrl} size={104} />
+                  </div>
+                  <p className="px-4 text-[11px] text-brand-gray dark:text-white/60">
+                    Scanne avec le téléphone pour démarrer la caméra
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(pairingUrl).catch(() => {})}
+                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-blue hover:underline dark:text-white/90"
+                  >
+                    <Copy size={12} />
+                    Copier le lien
+                  </button>
+                </div>
+              ) : isRemoteCamera && !captureError ? (
+                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">
+                  <Loader2 size={22} className="animate-spin text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">Génération du lien…</p>
                 </div>
               ) : (
                 <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">

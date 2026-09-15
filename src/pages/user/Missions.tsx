@@ -15,6 +15,7 @@ import { LaunchMissionDialog } from "@/components/user/missions/LaunchMissionDia
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 import { setCaptureMode, type CaptureMode } from "@/lib/captureMode";
+import { setCameraSource, type CameraSource } from "@/lib/cameraSource";
 import { setCurrentMissionId } from "@/lib/currentMission";
 
 const FILTERS: { value: MissionStatus | "toutes"; label: string }[] = [
@@ -47,10 +48,19 @@ export function Missions() {
   const [cancelTarget, setCancelTarget] = useState<Mission | null>(null);
 
   const launchMutation = useMutation({
-    mutationFn: async ({ mission, mode }: { mission: Mission; mode: CaptureMode }) => {
+    mutationFn: async ({
+      mission,
+      mode,
+      cameraSource,
+    }: {
+      mission: Mission;
+      mode: CaptureMode;
+      cameraSource: CameraSource;
+    }) => {
       // Enregistré avant de démarrer le vol : PhoneCaptureContext lit ce
       // choix dès qu'il détecte le vol actif, pas d'ordre à garantir côté API.
       setCaptureMode(mission.id, mode);
+      setCameraSource(mission.id, cameraSource);
       const updated = await api.updateMission(mission.id, {
         name: mission.name,
         zone: mission.zone,
@@ -430,9 +440,9 @@ export function Missions() {
       <LaunchMissionDialog
         mission={launchTarget}
         onCancel={() => setLaunchTarget(null)}
-        onLaunch={(mission, mode) => {
+        onLaunch={(mission, mode, cameraSource) => {
           launchMutation.mutate(
-            { mission, mode },
+            { mission, mode, cameraSource },
             {
               onSuccess: () => {
                 setLaunchTarget(null);

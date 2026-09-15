@@ -35,6 +35,8 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 
 ## 5. Aucune notion de "type de mission"
 
+**✅ Livré le 2026-09-11** — doc d'intégration backend reçu et vérifié conforme au schéma live (`TypeMissionCreate`/`TypeMissionRead`, `type_mission_uuid` sur `MissionCreate`/`MissionRead`/`MissionUpdate`). Le frontend n'était câblé que contre la proposition ci-dessous ; voir `src/lib/api/backendTypes.ts` pour les types à jour.
+
 **Endpoints concernés** : aucun — confirmé le 2026-09-11 sur `MissionCreate`, `MissionRead`, `MissionUpdate` (`GET /openapi.json`) : aucun champ de type/catégorie, et aucune ressource de ce nom n'existe dans le schéma.
 **Constaté (2026-09-11)** : besoin identifié côté UI — un Admin doit pouvoir définir des types de mission (ex. "Inspection préventive", "Urgence") pour son entreprise, et ses techniciens doivent pouvoir en choisir un (optionnel) à la création d'une mission, en ne voyant que les types de leur propre entreprise.
 **Impact frontend** : contrairement aux réglages d'entreprise (§2), une simple persistance locale (`localStorage`) est ici insuffisante : l'Admin et ses techniciens sont deux comptes différents, sur des appareils différents — un stockage côté navigateur de l'un n'est jamais visible par l'autre. Cette fonctionnalité nécessite une vraie ressource persistée côté API pour être utilisable. En attendant, le frontend est câblé contre le contrat proposé ci-dessous (voir `src/lib/api/backendTypes.ts`, `BackendMissionType` et `BackendMission.type_mission_uuid`) — les appels réels échoueront (404) tant que l'endpoint n'existe pas côté serveur ; le mode `VITE_USE_MOCKS=true` simule la fonctionnalité en attendant.
@@ -45,6 +47,18 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 - `DELETE /api/v1/types-mission/{uuid}` — réservé ADMIN (à l'entreprise du type). Suppression logique ou physique au choix du backend ; le frontend ne dépend pas d'une réactivation ultérieure pour ce besoin.
 - Sur `Mission` : ajouter `type_mission_uuid` (`uuid | null`, optionnel — une mission peut ne pas avoir de type) à `MissionCreate` et `MissionRead`. Idéalement aussi modifiable via `MissionUpdate` (contrairement à `appareil`, changer le type après création n'a pas d'impact fonctionnel côté vol/capture).
 - Pas de `PATCH` de renommage prévu pour cette itération frontend (un type se supprime/recrée) — à ajouter plus tard si besoin.
+
+---
+
+## 6. WebSocket `/api/v1/vols/{id}/live-analyse` bloquée en 403 au niveau infra (pas l'app)
+
+**Endpoints concernés** : `wss://vexdrone-osc.onrender.com/api/v1/vols/{flightId}/live-analyse` (analyse IA en direct pendant une mission téléphone en streaming).
+**Constaté (2026-09-13)** : testé en conditions réelles (mission téléphone, mode "Capture et analyse en continu") — le navigateur échoue systématiquement le handshake WebSocket avec `403` ("Unexpected response code: 403"), aussi bien en visant directement `vexdrone-osc.onrender.com` qu'en repassant par le proxy de dev (donc pas un problème de cookie/origine côté frontend, déjà vérifié et corrigé séparément). Isolé via `curl` en dehors du navigateur :
+- Un `GET` normal (sans en-têtes d'upgrade) sur une route de vol existante renvoie `404` avec les en-têtes de la vraie app (`x-render-origin-server: uvicorn`, corps JSON `{"detail":"Not Found"}`) — l'app FastAPI répond normalement.
+- La même requête mais avec les en-têtes d'upgrade WebSocket (`Connection: Upgrade`, `Upgrade: websocket`, ...) renvoie `403` avec un corps **vide** et **aucun** en-tête d'app (pas de `x-render-origin-server`, pas de `rndr-id`...) — y compris sur une route totalement bidon qui n'existe pas.
+- Une route inexistante ne peut renvoyer 403 que si la requête n'atteint jamais l'app (sinon ce serait un 404, comme le premier test) : la requête est donc rejetée à la périphérie (Cloudflare devant Render), avant même d'arriver à uvicorn/FastAPI — uniquement à cause des en-têtes d'upgrade WebSocket, indépendamment du chemin ou de l'authentification.
+**Impact frontend** : la fonctionnalité de superposition des boîtes de détection en direct sur la vue caméra (`Vols.tsx`, overlay canvas) ne peut jamais fonctionner tant que ce blocage est en place — la capture/upload photo classique (`captureOnce`, toutes les 3s) n'est pas affectée, seul l'aperçu temps réel l'est.
+**Proposition** : vérifier côté infra Render/Cloudflare pourquoi les upgrades WebSocket sont rejetés en 403 à la périphérie pour ce service (règle WAF, "Bot Fight Mode", ou support WebSocket non activé pour ce plan/domaine) — ce n'est pas un correctif de code applicatif FastAPI, la route elle-même n'est jamais atteinte.
 
 ---
 
