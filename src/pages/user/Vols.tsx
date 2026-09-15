@@ -77,6 +77,7 @@ export function Vols() {
     consecutiveFailures,
     stopCaptureNow,
     liveDetections,
+    liveClean,
     pairingUrl,
   } = usePhoneCapture();
   const liveVideoRef = useRef<HTMLVideoElement>(null);
@@ -533,6 +534,15 @@ export function Vols() {
                     className="h-[180px] w-full bg-black object-cover"
                   />
                   <canvas ref={liveOverlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+                  {liveClean && (
+                    <Badge
+                      variant="success"
+                      className="pointer-events-none absolute left-2 top-2 bg-status-success/90 text-white dark:bg-status-success/90 dark:text-white"
+                    >
+                      <CheckCircle2 size={12} />
+                      Pas d'anomalie
+                    </Badge>
+                  )}
                 </div>
               ) : isRemoteCamera && !captureError && pairingUrl ? (
                 <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white p-3 text-center dark:bg-white/5">

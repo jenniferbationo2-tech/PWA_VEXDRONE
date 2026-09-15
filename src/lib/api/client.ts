@@ -139,10 +139,13 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 // voir plus bas) : un 404 pendant qu'on attend que l'autre pair dépose son
 // SDP n'est pas une erreur, juste "pas encore prêt" — apiFetch lèverait ici à
 // chaque tour de poll. Réservé à ce cas précis, ne remplace pas apiFetch pour
-// le reste (403 CSRF non géré ici : ces endpoints ne portent pas de session).
+// le reste. `credentials: "omit"` volontaire (pas juste "non géré") : ces
+// endpoints sont publics par design (le téléphone n'a jamais de session,
+// voir BACKEND_REQUESTS.md §7) — confirmé explicitement par le backend de ne
+// pas y envoyer cookies/headers d'auth, y compris depuis le PC connecté.
 async function apiFetchOrNull404<T>(path: string): Promise<T | null> {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${BASE_URL}${path}`, { credentials: "include", signal: timeout }).catch((err) => {
+  const res = await fetch(`${BASE_URL}${path}`, { credentials: "omit", signal: timeout }).catch((err) => {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
     }
@@ -153,6 +156,29 @@ async function apiFetchOrNull404<T>(path: string): Promise<T | null> {
     throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
   }
   return res.json();
+}
+
+// Pendant equivalent en POST, meme raison (endpoints publics /webrtc/...,
+// voir apiFetchOrNull404 juste au-dessus) : pas de credentials/CSRF, ce
+// serait superflu (voire trompeur) sur une route qui n'attend aucune
+// session, y compris quand l'appelant (le PC) est lui-meme connecte.
+async function publicPost(path: string, body: unknown): Promise<void> {
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "omit",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    signal: timeout,
+  }).catch((err) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+    }
+    throw err;
+  });
+  if (!res.ok) {
+    throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
+  }
 }
 
 // multipart/form-data : ne peut pas passer par apiFetch, qui force
@@ -688,7 +714,7 @@ export const api = {
   // à la lecture pour reformer un RTCSessionDescriptionInit complet, sinon
   // setRemoteDescription() échoue (type manquant).
   postSignalingOffer: async (token: string, offer: RTCSessionDescriptionInit): Promise<void> => {
-    await apiFetch(`/api/v1/webrtc/${token}/offer`, { method: "POST", body: JSON.stringify({ sdp: offer.sdp }) });
+    await publicPost(`/api/v1/webrtc/${token}/offer`, { sdp: offer.sdp });
   },
 
   getSignalingOffer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
@@ -697,7 +723,7 @@ export const api = {
   },
 
   postSignalingAnswer: async (token: string, answer: RTCSessionDescriptionInit): Promise<void> => {
-    await apiFetch(`/api/v1/webrtc/${token}/answer`, { method: "POST", body: JSON.stringify({ sdp: answer.sdp }) });
+    await publicPost(`/api/v1/webrtc/${token}/answer`, { sdp: answer.sdp });
   },
 
   getSignalingAnswer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {

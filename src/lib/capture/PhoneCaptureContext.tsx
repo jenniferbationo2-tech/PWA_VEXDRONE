@@ -18,13 +18,17 @@ const FAILURE_ALERT_THRESHOLD = 3;
 
 // Flux temps réel séparé de captureOnce (qui persiste une image toutes les
 // 3s) : ici aucune frame n'est enregistrée côté serveur, juste analysée à la
-// volée pour l'overlay live — cadence bien plus rapide, qualité réduite pour
-// rester léger à ce rythme.
+// volée pour l'overlay live — cadence et qualité alignées sur l'exemple
+// d'implémentation du doc d'intégration backend (§3.4, testé côté backend).
 const LIVE_ANALYSE_INTERVAL_MS = 400;
-const LIVE_ANALYSE_JPEG_QUALITY = 0.5;
+const LIVE_ANALYSE_JPEG_QUALITY = 0.8;
 
 export interface LiveDetection {
   type: string;
+  // Pourcentage (0-100), déjà converti depuis `confiance` (fraction 0-1 côté
+  // payload — confirmé par l'exemple d'implémentation backend §3.4 :
+  // `Math.round(d.confiance * 100)`). Convertir ici, pas à l'affichage, pour
+  // que le champ ait la même unité partout où il est consommé.
   confidence: number;
   bbox: { x: number; y: number; width: number; height: number };
 }
@@ -62,7 +66,7 @@ function toLiveDetection(raw: unknown): LiveDetection | null {
   }
   return {
     type: d.type_anomalie,
-    confidence: typeof d.confiance === "number" ? d.confiance : 0,
+    confidence: typeof d.confiance === "number" ? Math.round(d.confiance * 100) : 0,
     bbox: { x: d.bbox_x, y: d.bbox_y, width: d.bbox_largeur, height: d.bbox_hauteur },
   };
 }
@@ -90,6 +94,11 @@ interface PhoneCaptureContextType {
   // superposer les boites sur la video live (voir Vols.tsx). Vide hors
   // streaming ou tant qu'aucune reponse n'est encore arrivee.
   liveDetections: LiveDetection[];
+  // true seulement si la derniere reponse recue avait une liste de
+  // detections vide (donc "verifie, rien trouve") — distinct de false, qui
+  // couvre a la fois "pas encore de reponse" et "des detections en cours
+  // d'affichage". Sert au bandeau vert "Pas d'anomalie" (voir Vols.tsx).
+  liveClean: boolean;
   // Lien d'appairage (QR code, voir Vols.tsx) pendant qu'on attend la
   // connexion WebRTC du telephone en mode camera "distante" — null hors de
   // ce mode, ou une fois le flux recu (voir beginCapturing).
@@ -104,6 +113,7 @@ const PhoneCaptureContext = createContext<PhoneCaptureContextType>({
   consecutiveFailures: 0,
   stopCaptureNow: () => {},
   liveDetections: [],
+  liveClean: false,
   pairingUrl: null,
 });
 
@@ -158,6 +168,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const [lastCaptureAt, setLastCaptureAt] = useState<number | null>(null);
   const [consecutiveFailures, setConsecutiveFailures] = useState(0);
   const [liveDetections, setLiveDetections] = useState<LiveDetection[]>([]);
+  const [liveClean, setLiveClean] = useState(false);
   const [pairingUrl, setPairingUrl] = useState<string | null>(null);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -335,6 +346,10 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
           .map(toLiveDetection)
           .filter((d: LiveDetection | null): d is LiveDetection => d !== null);
         setLiveDetections(detections);
+        // Distingue "pas encore de reponse" (bandeau absent) de "reponse
+        // recue, aucune anomalie" (bandeau vert "Pas d'anomalie", voir
+        // Vols.tsx) — les deux ont une liste de detections vide.
+        setLiveClean(detections.length === 0);
       } catch {
         // Reponse non-JSON ou inattendue : ignoree, la prochaine frame retentera.
       }
@@ -347,6 +362,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         liveFrameIntervalRef.current = null;
       }
       setLiveDetections([]);
+      setLiveClean(false);
       // Codes documentés par le backend (doc du 2026-09-11, §3.1) — dans les
       // deux cas la capture/upload des photos continue normalement (l'analyse
       // officielle se fait sur les photos une fois uploadées), seul l'aperçu
@@ -381,6 +397,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     liveWsRef.current?.close();
     liveWsRef.current = null;
     setLiveDetections([]);
+    setLiveClean(false);
   }
 
   function scheduleNext(missionId: string, flightId: string) {
@@ -595,6 +612,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         consecutiveFailures,
         stopCaptureNow,
         liveDetections,
+        liveClean,
         pairingUrl,
       }}
     >
