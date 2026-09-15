@@ -675,23 +675,34 @@ export const api = {
   // utilement. Contrat backend : voir doc "VEXDRONE — Téléphone comme caméra
   // distante" transmise à l'équipe backend.
   createPairingToken: async (flightId: string): Promise<{ token: string; expiresAt: string }> => {
-    return apiFetch(`/api/v1/vols/${flightId}/camera-distante/token`, { method: "POST" });
+    const raw = await apiFetch<{ token: string; expires_at: string }>(
+      `/api/v1/vols/${flightId}/camera-distante/token`,
+      { method: "POST" }
+    );
+    return { token: raw.token, expiresAt: raw.expires_at };
   },
 
+  // SdpPayload/SdpRead (schéma live vérifié le 2026-09-15) ne portent qu'un
+  // champ `sdp` — pas de `type` ("offer"/"answer"), déjà porté par l'endpoint
+  // appelé lui-même. On n'envoie donc que `sdp`, et on reconstruit le `type`
+  // à la lecture pour reformer un RTCSessionDescriptionInit complet, sinon
+  // setRemoteDescription() échoue (type manquant).
   postSignalingOffer: async (token: string, offer: RTCSessionDescriptionInit): Promise<void> => {
-    await apiFetch(`/api/v1/webrtc/${token}/offer`, { method: "POST", body: JSON.stringify(offer) });
+    await apiFetch(`/api/v1/webrtc/${token}/offer`, { method: "POST", body: JSON.stringify({ sdp: offer.sdp }) });
   },
 
   getSignalingOffer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
-    return apiFetchOrNull404(`/api/v1/webrtc/${token}/offer`);
+    const raw = await apiFetchOrNull404<{ sdp: string }>(`/api/v1/webrtc/${token}/offer`);
+    return raw ? { type: "offer", sdp: raw.sdp } : null;
   },
 
   postSignalingAnswer: async (token: string, answer: RTCSessionDescriptionInit): Promise<void> => {
-    await apiFetch(`/api/v1/webrtc/${token}/answer`, { method: "POST", body: JSON.stringify(answer) });
+    await apiFetch(`/api/v1/webrtc/${token}/answer`, { method: "POST", body: JSON.stringify({ sdp: answer.sdp }) });
   },
 
   getSignalingAnswer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
-    return apiFetchOrNull404(`/api/v1/webrtc/${token}/answer`);
+    const raw = await apiFetchOrNull404<{ sdp: string }>(`/api/v1/webrtc/${token}/answer`);
+    return raw ? { type: "answer", sdp: raw.sdp } : null;
   },
 
   endFlight: async (flightId: string): Promise<void> => {

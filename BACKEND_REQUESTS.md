@@ -52,6 +52,8 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 
 ## 6. WebSocket `/api/v1/vols/{id}/live-analyse` bloquée en 403 au niveau infra (pas l'app)
 
+**🟡 Signal encourageant le 2026-09-15** — retesté via `curl` avec les mêmes en-têtes d'upgrade WebSocket que le test initial : la requête renvoie maintenant `404` avec les en-têtes de la vraie app (`x-render-origin-server: uvicorn`, `cf-ray`, corps `{"detail":"Not Found"}`), là où elle renvoyait un `403` vide sans en-tête d'app. La requête atteint donc bien uvicorn maintenant — le blocage à la périphérie Cloudflare semble levé. Pas encore confirmé en conditions réelles dans le navigateur (poignée de main WebSocket complète, pas juste les en-têtes HTTP) : à retester pendant un vrai vol streaming avant de clore ce point.
+
 **Endpoints concernés** : `wss://vexdrone-osc.onrender.com/api/v1/vols/{flightId}/live-analyse` (analyse IA en direct pendant une mission téléphone en streaming).
 **Constaté (2026-09-13)** : testé en conditions réelles (mission téléphone, mode "Capture et analyse en continu") — le navigateur échoue systématiquement le handshake WebSocket avec `403` ("Unexpected response code: 403"), aussi bien en visant directement `vexdrone-osc.onrender.com` qu'en repassant par le proxy de dev (donc pas un problème de cookie/origine côté frontend, déjà vérifié et corrigé séparément). Isolé via `curl` en dehors du navigateur :
 - Un `GET` normal (sans en-têtes d'upgrade) sur une route de vol existante renvoie `404` avec les en-têtes de la vraie app (`x-render-origin-server: uvicorn`, corps JSON `{"detail":"Not Found"}`) — l'app FastAPI répond normalement.
@@ -59,6 +61,14 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 - Une route inexistante ne peut renvoyer 403 que si la requête n'atteint jamais l'app (sinon ce serait un 404, comme le premier test) : la requête est donc rejetée à la périphérie (Cloudflare devant Render), avant même d'arriver à uvicorn/FastAPI — uniquement à cause des en-têtes d'upgrade WebSocket, indépendamment du chemin ou de l'authentification.
 **Impact frontend** : la fonctionnalité de superposition des boîtes de détection en direct sur la vue caméra (`Vols.tsx`, overlay canvas) ne peut jamais fonctionner tant que ce blocage est en place — la capture/upload photo classique (`captureOnce`, toutes les 3s) n'est pas affectée, seul l'aperçu temps réel l'est.
 **Proposition** : vérifier côté infra Render/Cloudflare pourquoi les upgrades WebSocket sont rejetés en 403 à la périphérie pour ce service (règle WAF, "Bot Fight Mode", ou support WebSocket non activé pour ce plan/domaine) — ce n'est pas un correctif de code applicatif FastAPI, la route elle-même n'est jamais atteinte.
+
+---
+
+## 7. Caméra distante (WebRTC) — endpoints livrés, un écart de schéma géré côté frontend
+
+**✅ Livré le 2026-09-15** — vérifié sur le schéma live : `POST /vols/{vol_uuid}/camera-distante/token` (`HTTPBearer` requis, réponse `TokenCameraDistanteRead` = `{ token, expires_at }`), et `/webrtc/{token}/offer` + `/webrtc/{token}/answer` (POST+GET), tous les deux bien **sans authentification** (même traitement que `/auth/login` sur le schéma — confirmé volontaire, cohérent avec le fait que le téléphone qui scanne le QR n'a jamais de session).
+
+**Écart constaté, géré côté frontend, aucune action backend nécessaire** : `SdpPayload`/`SdpRead` ne portent qu'un champ `sdp` (pas de `type` "offer"/"answer"). Le frontend envoyait initialement l'objet `RTCSessionDescriptionInit` complet (`{ type, sdp }`) et attendait la même forme en retour — `setRemoteDescription()` a besoin de `type` pour fonctionner. Corrigé côté client (`client.ts`) : on n'envoie que `sdp`, et on reconstruit `type` à la lecture (`"offer"` ou `"answer"` selon l'endpoint appelé, cette info est déjà portée par le chemin). Aucun changement de schéma demandé au backend pour ça.
 
 ---
 
