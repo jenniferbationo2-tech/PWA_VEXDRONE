@@ -210,9 +210,11 @@ export function toMissionImage(raw: BackendImage): MissionImage {
 }
 
 // Un rapport = une mission terminee, pas une entite stockee a part (voir
-// le module report cote backend). pdf_url n'est pas encore implemente
-// cote backend : "#" reprend la convention deja utilisee par l'UI pour
-// signaler "pas d'apercu PDF disponible".
+// le module report cote backend). pdf_url existe cote backend (GET
+// /reports/{mission_uuid}/pdf, schema live verifie le 2026-09-16) mais n'est
+// pas utilise ici : le rapport imprimable est genere cote frontend pour
+// respecter la charte graphique VEXDRONE (voir MissionReportPrint.tsx) —
+// "#" reste la valeur de repli si pdf_url est absent.
 export function toReport(raw: BackendReport): Report {
   return {
     id: raw.mission_uuid,

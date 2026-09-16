@@ -30,9 +30,25 @@ export function Missions() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { addNotification } = useNotifications();
+  // Poll léger (même intervalle que Vols.tsx/Anomalies.tsx) : une mission
+  // "en_attente" peut être acceptée ou annulée par l'admin à tout moment,
+  // sans action du technicien sur cette page pour le déclencher.
   const { data: missions, isLoading, isError } = useQuery({
     queryKey: ["missions"],
     queryFn: api.getMissions,
+    refetchInterval: 4000,
+  });
+
+  // Même clé que Vols.tsx (cache partagé) : sert ici uniquement à savoir si
+  // une mission "en_cours" a déjà un vol démarré, pour ne pas réafficher
+  // "Lancer" et laisser le technicien recréer un second vol sur la même
+  // mission — "en_cours" couvre tout le cycle (validée par l'admin ->
+  // vol terminé), pas seulement l'instant du lancement.
+  const { data: activeFlight } = useQuery({
+    queryKey: ["active-flight"],
+    queryFn: api.getActiveFlight,
+    refetchInterval: 4000,
+    retry: false,
   });
 
   const [filter, setFilter] = useState<MissionStatus | "toutes">("toutes");
@@ -61,39 +77,30 @@ export function Missions() {
       // choix dès qu'il détecte le vol actif, pas d'ordre à garantir côté API.
       setCaptureMode(mission.id, mode);
       setCameraSource(mission.id, cameraSource);
-      const updated = await api.updateMission(mission.id, {
-        name: mission.name,
-        zone: mission.zone,
-        description: mission.description,
-        dateDebut: mission.dateDebut,
-        dateFin: mission.dateFin,
-        status: "en_cours",
-        appareil: mission.appareil,
-        droneId: mission.droneId,
-        typeMissionId: mission.typeMissionId,
-      });
+      // La mission est déjà "en_cours" (validée par l'admin) avant que ce
+      // bouton ne soit même visible — voir le filtre plus bas. "Lancer" ne
+      // fait donc plus que démarrer le vol, il ne touche plus au statut.
       // Un Vol existe pour les deux méthodes d'inspection (drone ou
       // téléphone) — c'est lui que /vols/actif et la page Vols suivent.
       await api.startFlight(mission.id, mode);
-      return updated;
+      return mission;
     },
-    onSuccess: (updated) => {
+    onSuccess: (mission) => {
       // "Résultat analyse" (Anomalies.tsx) bascule sur cette mission : les
       // résultats de la précédente restent consultables ailleurs (Rapports)
       // mais disparaissent de ce tableau dès qu'une nouvelle mission démarre.
-      setCurrentMissionId(updated.id);
+      setCurrentMissionId(mission.id);
       queryClient.invalidateQueries({ queryKey: ["missions"] });
       queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
       queryClient.invalidateQueries({ queryKey: ["active-flight"] });
       addNotification({
         title: "Mission lancée",
-        message: `"${updated.name}" est en cours — suivez le vol en direct.`,
+        message: `"${mission.name}" est en cours — suivez le vol en direct.`,
         link: "/vols",
       });
     },
-    // Sans ca, un echec de startFlight (mission deja passee en_cours mais
-    // vol jamais cree) ne s'affichait nulle part — la page Vols restait sur
-    // "Aucun vol en cours" sans aucun indice de ce qui s'est passe.
+    // Sans ca, un echec de startFlight ne s'affichait nulle part — la page
+    // Vols restait sur "Aucun vol en cours" sans aucun indice de ce qui s'est passe.
     onError: (err) => {
       queryClient.invalidateQueries({ queryKey: ["missions"] });
       queryClient.invalidateQueries({ queryKey: ["entreprise-missions"] });
@@ -260,6 +267,7 @@ export function Missions() {
                 {filtered.map((m: Mission) => {
                   const isLaunching = launchMutation.isPending && launchMutation.variables?.mission.id === m.id;
                   const effectiveStatus = getEffectiveStatus(m);
+                  const canLaunch = effectiveStatus === "en_cours" && activeFlight?.missionId !== m.id;
                   return (
                     <tr key={m.id} className="border-b border-brand-blue/[0.04] last:border-0 hover:bg-brand-off-white/60 dark:border-white/5 dark:hover:bg-white/5">
                       <td className="px-3 py-3 truncate" title={m.zone}>
@@ -282,7 +290,7 @@ export function Missions() {
                       </td>
                       <td className="px-3 py-3">
                         <div className="flex items-center justify-end gap-0.5">
-                          {effectiveStatus === "en_attente" &&
+                          {canLaunch &&
                             (isLaunching ? (
                               <span className="flex h-9 w-9 items-center justify-center text-brand-gray">
                                 <Loader2 size={16} className="animate-spin" />
@@ -336,6 +344,7 @@ export function Missions() {
           <div className="space-y-3 md:hidden">
             {filtered.map((m: Mission) => {
               const effectiveStatus = getEffectiveStatus(m);
+              const canLaunch = effectiveStatus === "en_cours" && activeFlight?.missionId !== m.id;
               return (
                 <div key={m.id} className="rounded-lg border border-brand-blue/[0.06] bg-white p-4 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
                   <div className="mb-2 flex items-start justify-between gap-2">
@@ -356,7 +365,7 @@ export function Missions() {
                   </div>
 
                   <div className="flex items-center gap-4 border-t border-brand-blue/[0.06] pt-3 dark:border-white/10">
-                    {effectiveStatus === "en_attente" &&
+                    {canLaunch &&
                       (launchMutation.isPending && launchMutation.variables?.mission.id === m.id ? (
                         <span className="flex items-center gap-1 text-[13px] font-semibold text-brand-gray dark:text-white/60">
                           <Loader2 size={13} className="animate-spin" /> Lancement…

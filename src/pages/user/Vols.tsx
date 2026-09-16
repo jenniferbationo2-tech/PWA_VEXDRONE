@@ -169,6 +169,10 @@ export function Vols() {
   const isPhoneMission = activeMission?.appareil === "appareil_photo";
   const isUploadMode = activeMission ? getCaptureMode(activeMission.id) === "differe" : false;
   const isRemoteCamera = activeMission ? getCameraSource(activeMission.id) === "distante" : false;
+  // "localhost"/"127.0.0.1" n'a de sens que sur cette machine — un lien
+  // d'appairage construit dessus (voir PhoneCaptureContext.tsx, pairingUrl =
+  // window.location.origin + ...) n'est jamais joignable par un téléphone.
+  const isLocalhostOrigin = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
 
   // Vérification IA de la mission (statut_analyse par image, avec relances
   // automatiques) — sert à la fois la galerie ci-dessous et le bandeau de
@@ -266,16 +270,16 @@ export function Vols() {
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
           <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none lg:col-span-2">
+            <Skeleton className="mb-4 h-4 w-28" />
+            <Skeleton className="h-[420px] w-full rounded-md" />
+          </div>
+          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
             <Skeleton className="mb-4 h-4 w-40" />
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-2">
               {Array.from({ length: 8 }).map((_, i) => (
                 <Skeleton key={i} className="aspect-square w-full rounded-md" />
               ))}
             </div>
-          </div>
-          <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
-            <Skeleton className="mb-4 h-4 w-28" />
-            <Skeleton className="h-[180px] w-full rounded-md" />
           </div>
         </div>
       </div>
@@ -485,9 +489,103 @@ export function Vols() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         <div className="lg:col-span-2 rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
+          <h3 className="mb-4">
+            {isPhoneMission ? (isUploadMode ? "Import manuel" : "Vue caméra en direct") : "Vidéo drone"}
+          </h3>
+          <div className="overflow-hidden rounded-md">
+            {isPhoneMission ? (
+              isUploadMode ? (
+                <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
+                  <UploadCloud size={32} className="text-brand-blue/50 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[14px] text-brand-gray dark:text-white/60">
+                    Mode upload — importe tes photos depuis Anomalies.
+                  </p>
+                  <Link
+                    to="/anomalies"
+                    state={{ missionId: activeMission?.id }}
+                    className="text-[14px] font-semibold text-brand-blue hover:underline dark:text-white/90"
+                  >
+                    Importer maintenant
+                  </Link>
+                </div>
+              ) : isCapturing && stream ? (
+                <div className="relative h-[420px] w-full">
+                  <video
+                    ref={liveVideoRef}
+                    autoPlay
+                    muted
+                    playsInline
+                    className="h-[420px] w-full bg-black object-cover"
+                  />
+                  <canvas ref={liveOverlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
+                  {liveClean && (
+                    <Badge
+                      variant="success"
+                      className="pointer-events-none absolute left-2 top-2 bg-status-success/90 text-white dark:bg-status-success/90 dark:text-white"
+                    >
+                      <CheckCircle2 size={12} />
+                      Pas d'anomalie
+                    </Badge>
+                  )}
+                </div>
+              ) : isRemoteCamera && !captureError && pairingUrl && isLocalhostOrigin ? (
+                // "localhost"/"127.0.0.1" n'est joignable que depuis cet
+                // ordinateur — un QR pointant dessus est garanti inutilisable
+                // par un téléphone ("this site can't be reached"). On préfère
+                // le dire explicitement plutôt que d'afficher un QR mort.
+                <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md bg-brand-off-white p-6 text-center dark:bg-white/5">
+                  <VideoOff size={32} className="text-brand-orange" strokeWidth={1.5} />
+                  <p className="px-4 text-[13px] font-medium text-brand-orange">
+                    Rouvre cette page depuis l'adresse IP locale du PC (pas "localhost") pour que le lien du QR
+                    code soit joignable par le téléphone.
+                  </p>
+                </div>
+              ) : isRemoteCamera && !captureError && pairingUrl ? (
+                <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md bg-brand-off-white p-6 text-center dark:bg-white/5">
+                  <div className="rounded-md bg-white p-3">
+                    <QRCodeSVG value={pairingUrl} size={160} />
+                  </div>
+                  <p className="px-4 text-[13px] text-brand-gray dark:text-white/60">
+                    Scanne avec le téléphone pour démarrer la caméra
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(pairingUrl).catch(() => {})}
+                    className="flex items-center gap-1 text-[13px] font-semibold text-brand-blue hover:underline dark:text-white/90"
+                  >
+                    <Copy size={14} />
+                    Copier le lien
+                  </button>
+                </div>
+              ) : isRemoteCamera && !captureError ? (
+                <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md bg-brand-off-white text-center dark:bg-white/5">
+                  <Loader2 size={32} className="animate-spin text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[14px] text-brand-gray dark:text-white/60">Génération du lien…</p>
+                </div>
+              ) : (
+                <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md bg-brand-off-white text-center dark:bg-white/5">
+                  <VideoOff size={32} className="text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
+                  <p className="px-4 text-[14px] text-brand-gray dark:text-white/60">
+                    {captureError ?? "Connexion à la caméra…"}
+                  </p>
+                </div>
+              )
+            ) : (
+              <div className="flex h-[420px] w-full flex-col items-center justify-center gap-3 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
+                <Video size={32} className="text-brand-blue/40 dark:text-white/30" strokeWidth={1.5} />
+                <p className="text-[14px] font-medium text-brand-gray dark:text-white/60">Vidéo drone à venir</p>
+              </div>
+            )}
+          </div>
+          <p className="mt-3 text-center text-[13px] text-brand-gray dark:text-white/60">
+            {flight.gps.lat.toFixed(4)}°N, {flight.gps.lng.toFixed(4)}°O
+          </p>
+        </div>
+
+        <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
           <h3 className="mb-4">Images captées en direct</h3>
           {missionImages && missionImages.length > 0 ? (
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-2">
               {missionImages.slice(0, 8).map((img) => (
                 <img
                   key={img.id}
@@ -502,88 +600,6 @@ export function Vols() {
               {flight.imagesCaptured > 0 ? "Chargement des photos…" : "Aucune photo pour l'instant"}
             </div>
           )}
-        </div>
-
-        <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-6 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
-          <h3 className="mb-4">
-            {isPhoneMission ? (isUploadMode ? "Import manuel" : "Vue caméra en direct") : "Vidéo drone"}
-          </h3>
-          <div className="overflow-hidden rounded-md">
-            {isPhoneMission ? (
-              isUploadMode ? (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2.5 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
-                  <UploadCloud size={22} className="text-brand-blue/50 dark:text-white/40" strokeWidth={1.5} />
-                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">
-                    Mode upload — importe tes photos depuis Anomalies.
-                  </p>
-                  <Link
-                    to="/anomalies"
-                    state={{ missionId: activeMission?.id }}
-                    className="text-[12px] font-semibold text-brand-blue hover:underline dark:text-white/90"
-                  >
-                    Importer maintenant
-                  </Link>
-                </div>
-              ) : isCapturing && stream ? (
-                <div className="relative h-[180px] w-full">
-                  <video
-                    ref={liveVideoRef}
-                    autoPlay
-                    muted
-                    playsInline
-                    className="h-[180px] w-full bg-black object-cover"
-                  />
-                  <canvas ref={liveOverlayRef} className="pointer-events-none absolute inset-0 h-full w-full" />
-                  {liveClean && (
-                    <Badge
-                      variant="success"
-                      className="pointer-events-none absolute left-2 top-2 bg-status-success/90 text-white dark:bg-status-success/90 dark:text-white"
-                    >
-                      <CheckCircle2 size={12} />
-                      Pas d'anomalie
-                    </Badge>
-                  )}
-                </div>
-              ) : isRemoteCamera && !captureError && pairingUrl ? (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white p-3 text-center dark:bg-white/5">
-                  <div className="rounded-md bg-white p-2">
-                    <QRCodeSVG value={pairingUrl} size={104} />
-                  </div>
-                  <p className="px-4 text-[11px] text-brand-gray dark:text-white/60">
-                    Scanne avec le téléphone pour démarrer la caméra
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => navigator.clipboard.writeText(pairingUrl).catch(() => {})}
-                    className="flex items-center gap-1 text-[11px] font-semibold text-brand-blue hover:underline dark:text-white/90"
-                  >
-                    <Copy size={12} />
-                    Copier le lien
-                  </button>
-                </div>
-              ) : isRemoteCamera && !captureError ? (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">
-                  <Loader2 size={22} className="animate-spin text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
-                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">Génération du lien…</p>
-                </div>
-              ) : (
-                <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md bg-brand-off-white text-center dark:bg-white/5">
-                  <VideoOff size={22} className="text-brand-gray/60 dark:text-white/40" strokeWidth={1.5} />
-                  <p className="px-4 text-[12px] text-brand-gray dark:text-white/60">
-                    {captureError ?? "Connexion à la caméra…"}
-                  </p>
-                </div>
-              )
-            ) : (
-              <div className="flex h-[180px] w-full flex-col items-center justify-center gap-2 rounded-md border border-dashed border-brand-blue/20 text-center dark:border-white/15">
-                <Video size={22} className="text-brand-blue/40 dark:text-white/30" strokeWidth={1.5} />
-                <p className="text-[12px] font-medium text-brand-gray dark:text-white/60">Vidéo drone à venir</p>
-              </div>
-            )}
-          </div>
-          <p className="mt-3 text-center text-[13px] text-brand-gray dark:text-white/60">
-            {flight.gps.lat.toFixed(4)}°N, {flight.gps.lng.toFixed(4)}°O
-          </p>
         </div>
       </div>
     </div>

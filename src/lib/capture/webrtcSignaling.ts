@@ -31,6 +31,28 @@ export function waitForIceGatheringComplete(
   });
 }
 
+// Doit être appelé IMMÉDIATEMENT après la création du RTCPeerConnection, avant
+// tout setRemoteDescription : `ontrack` peut se déclencher dès que la SDP
+// distante est appliquée (le track négocié devient disponible), pas
+// seulement une fois les médias effectivement reçus — un `pc.ontrack = ...`
+// posé après setRemoteDescription arrive donc parfois trop tard et rate
+// l'évènement pour de bon (vécu en test : connectionState atteint
+// "connected" mais ontrack jamais vu). Cette fonction n'a pas de timeout —
+// c'est juste l'inscription du listener ; combiner avec `withTimeout`
+// ci-dessous au moment où on veut vraiment attendre.
+export function createRemoteTrackPromise(pc: RTCPeerConnection): Promise<MediaStream> {
+  return new Promise((resolve) => {
+    pc.ontrack = (event) => resolve(event.streams[0]);
+  });
+}
+
+export function withTimeout<T>(promise: Promise<T>, timeoutMs: number, message: string): Promise<T> {
+  return Promise.race([
+    promise,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(message)), timeoutMs)),
+  ]);
+}
+
 export interface PollOptions {
   intervalMs?: number;
   timeoutMs?: number;

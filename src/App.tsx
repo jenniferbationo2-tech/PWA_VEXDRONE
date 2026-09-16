@@ -19,6 +19,9 @@ const Anomalies = lazy(() => import("@/pages/user/Anomalies").then((m) => ({ def
 const Carte = lazy(() => import("@/pages/user/Carte").then((m) => ({ default: m.Carte })));
 const Vols = lazy(() => import("@/pages/user/Vols").then((m) => ({ default: m.Vols })));
 const Rapports = lazy(() => import("@/pages/user/Rapports").then((m) => ({ default: m.Rapports })));
+const MissionReportPrint = lazy(() =>
+  import("@/pages/reports/MissionReportPrint").then((m) => ({ default: m.MissionReportPrint }))
+);
 const AdminDashboard = lazy(() => import("@/pages/admin/Dashboard").then((m) => ({ default: m.AdminDashboard })));
 const AdminTechniciens = lazy(() => import("@/pages/admin/Techniciens").then((m) => ({ default: m.AdminTechniciens })));
 const AdminMissions = lazy(() => import("@/pages/admin/Missions").then((m) => ({ default: m.AdminMissions })));
@@ -49,6 +52,11 @@ export function App() {
               <Route path="/pair/:token" element={<PhoneSender />} />
 
               <Route element={<ProtectedRoute />}>
+                {/* Hors AppShell : page imprimable, sans sidebar/topbar */}
+                <Route element={<RoleRoute allow={["technicien"]} />}>
+                  <Route path="/rapports/:missionId/imprimer" element={<MissionReportPrint />} />
+                </Route>
+
                 <Route element={<AppShell />}>
                   {/* Partagé entre les 3 rôles */}
                   <Route path="/parametres" element={<Parametres />} />

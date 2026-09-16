@@ -26,11 +26,6 @@ export default defineConfig({
         target: "https://vexdrone-osc.onrender.com",
         changeOrigin: true,
         secure: true,
-        // Necessaire pour la WS de live-analyse (voir PhoneCaptureContext.tsx) :
-        // sans ca, le proxy ne relaie pas les upgrades WebSocket et le cookie de
-        // session (scope a cette origine par le proxy) n'atteint jamais le
-        // backend si on le contourne.
-        ws: true,
       },
     },
   },

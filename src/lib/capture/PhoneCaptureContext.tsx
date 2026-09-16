@@ -5,7 +5,7 @@ import { useNotifications } from "@/lib/notifications/NotificationContext";
 import { useAnalysisVerification } from "@/lib/analysis/useAnalysisVerification";
 import { getCaptureMode } from "@/lib/captureMode";
 import { getCameraSource } from "@/lib/cameraSource";
-import { STUN_SERVERS, waitForIceGatheringComplete, pollUntil } from "./webrtcSignaling";
+import { STUN_SERVERS, waitForIceGatheringComplete, pollUntil, createRemoteTrackPromise, withTimeout } from "./webrtcSignaling";
 
 // Cadence de capture : alignée sur celle de l'extraction de frames vidéo côté
 // backend (1 image / 2s), avec un peu de marge pour laisser le temps à
@@ -31,21 +31,6 @@ export interface LiveDetection {
   // que le champ ait la même unité partout où il est consommé.
   confidence: number;
   bbox: { x: number; y: number; width: number; height: number };
-}
-
-// En prod, VITE_API_BASE_URL pointe directement sur le backend : la WS s'y
-// connecte donc à la même origine que les requêtes HTTP classiques, cookie de
-// session compris. En dev, VITE_API_BASE_URL est vide et les requêtes HTTP
-// passent par le proxy Vite (/api → backend) — le cookie est donc scopé à
-// l'origine de la page (localhost), pas à onrender.com. La WS doit donc rester
-// sur la même origine que la page (relayée par le proxy, voir vite.config.ts,
-// server.proxy["/api"].ws: true) plutôt que de contourner le proxy : sinon le
-// handshake part sans cookie et le backend répond 403 (vécu en test le
-// 2026-09-13).
-function liveAnalyseUrl(flightId: string): string {
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  const httpBase = apiBaseUrl || window.location.origin;
-  return `${httpBase.replace(/^http/, "ws")}/api/v1/vols/${flightId}/live-analyse`;
 }
 
 // Même convention de champs que BackendAnomaly (type_anomalie, confiance,
@@ -89,7 +74,8 @@ interface PhoneCaptureContextType {
   // de React Query) peut encore declencher 1-2 captures pendant ce delai. A
   // appeler des le clic sur "Terminer", avant meme d'attendre la mutation.
   stopCaptureNow: () => void;
-  // Detections IA du flux temps reel (wss .../vols/{id}/live-analyse),
+  // Detections IA du flux temps reel (POST .../vols/{id}/live-analyse, un
+  // appel HTTP par frame — plus de WebSocket, voir startLiveAnalyse),
   // rafraichies a chaque reponse recue pendant un vol streaming — sert a
   // superposer les boites sur la video live (voir Vols.tsx). Vide hors
   // streaming ou tant qu'aucune reponse n'est encore arrivee.
@@ -177,8 +163,11 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeFlightIdRef = useRef<string | null>(null);
   const imagesCapturedRef = useRef(0);
-  const liveWsRef = useRef<WebSocket | null>(null);
   const liveFrameIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Empeche d'empiler les requetes si le serveur ralentit (meme garde-fou que
+  // `enCours` dans l'exemple d'implementation backend, doc §3.4) : on saute
+  // une frame plutot que d'en avoir plusieurs en vol simultanement.
+  const liveAnalyseSendingRef = useRef(false);
   // Incremente au debut de chaque tentative (start/startRemote) et dans
   // stop() : permet a une tentative startRemote() en cours (poignee de main
   // WebRTC = plusieurs dizaines de secondes, contrairement a getUserMedia
@@ -316,10 +305,13 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function sendLiveFrame() {
-    const ws = liveWsRef.current;
+  async function sendLiveFrame(flightId: string) {
+    // Une requete a la fois : si le serveur ralentit, on saute des frames
+    // plutot que d'en empiler plusieurs en vol (meme garde-fou que l'exemple
+    // d'implementation backend, doc §3.4).
+    if (liveAnalyseSendingRef.current) return;
     const video = videoRef.current;
-    if (!ws || ws.readyState !== WebSocket.OPEN || !video || video.readyState < 2) return;
+    if (!video || video.readyState < 2) return;
 
     const canvas = document.createElement("canvas");
     canvas.width = video.videoWidth;
@@ -327,75 +319,40 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     ctx.drawImage(video, 0, 0);
-    canvas.toBlob(
-      (blob) => {
-        if (blob && liveWsRef.current === ws && ws.readyState === WebSocket.OPEN) ws.send(blob);
-      },
-      "image/jpeg",
-      LIVE_ANALYSE_JPEG_QUALITY
+    const blob: Blob | null = await new Promise((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", LIVE_ANALYSE_JPEG_QUALITY)
     );
+    if (!blob) return;
+
+    liveAnalyseSendingRef.current = true;
+    try {
+      const { detections: raw } = await api.analyzeLiveFrame(flightId, blob);
+      const detections: LiveDetection[] = (Array.isArray(raw) ? raw : [])
+        .map(toLiveDetection)
+        .filter((d): d is LiveDetection => d !== null);
+      setLiveDetections(detections);
+      // Distingue "pas encore de reponse" (bandeau absent) de "reponse
+      // recue, aucune anomalie" (bandeau vert "Pas d'anomalie", voir
+      // Vols.tsx) — les deux ont une liste de detections vide.
+      setLiveClean(detections.length === 0);
+    } catch {
+      // 401/403/404/422/503 ou reseau : on ignore et on retente a la
+      // prochaine frame (doc §3.1) — chaque appel est independant, contrairement
+      // a l'ancien WebSocket, rien a rouvrir ni aucune notification a faire ici.
+    } finally {
+      liveAnalyseSendingRef.current = false;
+    }
   }
 
   function startLiveAnalyse(flightId: string) {
-    const ws = new WebSocket(liveAnalyseUrl(flightId));
-    ws.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data as string);
-        if (!Array.isArray(data?.detections)) return;
-        const detections: LiveDetection[] = data.detections
-          .map(toLiveDetection)
-          .filter((d: LiveDetection | null): d is LiveDetection => d !== null);
-        setLiveDetections(detections);
-        // Distingue "pas encore de reponse" (bandeau absent) de "reponse
-        // recue, aucune anomalie" (bandeau vert "Pas d'anomalie", voir
-        // Vols.tsx) — les deux ont une liste de detections vide.
-        setLiveClean(detections.length === 0);
-      } catch {
-        // Reponse non-JSON ou inattendue : ignoree, la prochaine frame retentera.
-      }
-    };
-    ws.onclose = (event) => {
-      if (liveWsRef.current !== ws) return;
-      liveWsRef.current = null;
-      if (liveFrameIntervalRef.current) {
-        clearInterval(liveFrameIntervalRef.current);
-        liveFrameIntervalRef.current = null;
-      }
-      setLiveDetections([]);
-      setLiveClean(false);
-      // Codes documentés par le backend (doc du 2026-09-11, §3.1) — dans les
-      // deux cas la capture/upload des photos continue normalement (l'analyse
-      // officielle se fait sur les photos une fois uploadées), seul l'aperçu
-      // live s'arrête. Pas de reconnexion auto : ça n'aiderait pas si le
-      // modèle est déjà saturé (2 analyses simultanées max côté serveur), et
-      // ça risquerait d'aggraver la saturation si plusieurs techniciens
-      // retentent en même temps.
-      if (event.code === 1011) {
-        addNotification({
-          title: "Analyse IA en direct indisponible",
-          message: "Le modèle d'analyse est temporairement surchargé — la capture continue normalement, l'analyse officielle se fera sur les photos uploadées.",
-        });
-      } else if (event.code === 1008) {
-        addNotification({
-          title: "Analyse en direct interrompue",
-          message: "La connexion au flux d'analyse en direct a été refusée — la capture continue normalement.",
-        });
-      }
-    };
-    ws.onerror = () => {
-      // Best-effort, meme logique que captureOnce : une erreur ponctuelle ne
-      // doit pas interrompre le direct, le prochain envoi de frame retentera
-      // une fois la connexion revenue (ou reste silencieux si le socket est mort).
-    };
-    liveWsRef.current = ws;
-    liveFrameIntervalRef.current = setInterval(sendLiveFrame, LIVE_ANALYSE_INTERVAL_MS);
+    liveAnalyseSendingRef.current = false;
+    liveFrameIntervalRef.current = setInterval(() => sendLiveFrame(flightId), LIVE_ANALYSE_INTERVAL_MS);
   }
 
   function stopLiveAnalyse() {
     if (liveFrameIntervalRef.current) clearInterval(liveFrameIntervalRef.current);
     liveFrameIntervalRef.current = null;
-    liveWsRef.current?.close();
-    liveWsRef.current = null;
+    liveAnalyseSendingRef.current = false;
     setLiveDetections([]);
     setLiveClean(false);
   }
@@ -462,19 +419,6 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     }
   }
 
-  function waitForRemoteTrack(pc: RTCPeerConnection, timeoutMs: number): Promise<MediaStream> {
-    return new Promise((resolve, reject) => {
-      const timeout = setTimeout(
-        () => reject(new Error("Délai dépassé en attendant le flux du téléphone.")),
-        timeoutMs
-      );
-      pc.ontrack = (event) => {
-        clearTimeout(timeout);
-        resolve(event.streams[0]);
-      };
-    });
-  }
-
   // Equivalent de start(), mais la camera vient d'un telephone distant via
   // WebRTC au lieu de getUserMedia local — voir beginCapturing pour ce qui
   // est strictement identique aux deux chemins. Signalisation en HTTP
@@ -492,6 +436,12 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
 
     const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
     pcRef.current = pc;
+    // Inscrit IMMEDIATEMENT (avant tout setRemoteDescription plus bas) :
+    // ontrack peut se declencher des que la SDP distante est appliquee, pas
+    // seulement une fois les medias reellement recus. L'attacher plus tard
+    // (juste avant d'attendre) l'a deja fait rater pour de bon — vu en test,
+    // connectionState atteignait "connected" mais ontrack n'etait jamais logue.
+    const remoteTrackPromise = createRemoteTrackPromise(pc);
     // Surveille la connexion une fois etablie, pas seulement pendant la
     // poignee de main : une coupure WiFi cote telephone laisserait sinon le
     // <video> afficher sa derniere frame indefiniment, sans jamais remonter
@@ -499,10 +449,39 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     // frame perimee toutes les 3s. stop() reinitialise activeFlightIdRef,
     // donc l'effet shouldCapture relancera automatiquement un nouvel
     // appairage (nouveau QR) au prochain poll si la mission tourne encore.
+    //
+    // "disconnected" n'est PAS traite comme un echec immediat : c'est un etat
+    // transitoire tres frequent pendant la selection de la paire de candidats
+    // ICE (vu en pratique des que le PC a plusieurs interfaces reseau actives
+    // — Wi-Fi + point d'acces mobile/adaptateur virtuel, ce qui donne
+    // plusieurs candidats a essayer). Reagir dessus au premier tick a deja
+    // provoque l'abandon d'une connexion qui allait reussir une fraction de
+    // seconde plus tard (le telephone, lui, continuait et finissait par se
+    // connecter — a une session deja fermee cote PC). On attend quelques
+    // secondes pour voir si ca se resorbe tout seul avant de vraiment stopper.
+    let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
+    function clearDisconnectTimer() {
+      if (disconnectTimer) {
+        clearTimeout(disconnectTimer);
+        disconnectTimer = null;
+      }
+    }
     pc.onconnectionstatechange = () => {
       if (isStale()) return;
-      if (pc.connectionState === "failed" || pc.connectionState === "disconnected" || pc.connectionState === "closed") {
+      if (pc.connectionState === "connected") {
+        clearDisconnectTimer();
+        return;
+      }
+      if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+        clearDisconnectTimer();
         stop();
+        return;
+      }
+      if (pc.connectionState === "disconnected" && !disconnectTimer) {
+        disconnectTimer = setTimeout(() => {
+          disconnectTimer = null;
+          if (!isStale() && pc.connectionState !== "connected") stop();
+        }, 8000);
       }
     };
 
@@ -524,14 +503,24 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
       }
       await api.postSignalingOffer(token, pc.localDescription!);
 
-      const answer = await pollUntil(() => api.getSignalingAnswer(token), { intervalMs: 2000, timeoutMs: 60_000 });
+      // 3 min, pas 60s : entre scanner le QR, passer l'avertissement de
+      // certificat auto-signé en dev (plusieurs taps) et autoriser la caméra,
+      // l'interaction humaine dépasse largement 60s en pratique — un timeout
+      // trop court fait abandonner puis régénérer un nouveau QR en silence
+      // (voir isStale ci-dessus) pendant que le téléphone, lui, continue sur
+      // l'ancien token et finit par se connecter... à une session déjà abandonnée.
+      const answer = await pollUntil(() => api.getSignalingAnswer(token), { intervalMs: 2000, timeoutMs: 180_000 });
       if (isStale()) {
         pc.close();
         return;
       }
       await pc.setRemoteDescription(answer);
 
-      const mediaStream = await waitForRemoteTrack(pc, 45_000);
+      const mediaStream = await withTimeout(
+        remoteTrackPromise,
+        60_000,
+        "Délai dépassé en attendant le flux du téléphone."
+      );
       if (isStale()) {
         pc.close();
         return;

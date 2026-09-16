@@ -52,6 +52,8 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 
 ## 6. WebSocket `/api/v1/vols/{id}/live-analyse` bloquée en 403 au niveau infra (pas l'app)
 
+**✅ Résolu le 2026-09-15 — par contournement, pas par un correctif infra.** L'équipe backend a remplacé l'endpoint par du polling HTTP classique (`POST /api/v1/vols/{vol_uuid}/live-analyse`, un appel indépendant par frame, ~400ms) plutôt que de dépendre d'un déblocage Cloudflare/Render pour la WS — voir leur doc d'intégration §3. Frontend migré en conséquence (`PhoneCaptureContext.tsx` : `startLiveAnalyse`/`sendLiveFrame` n'ouvrent plus de WebSocket, ils postent chaque frame via `api.analyzeLiveFrame` et retentent simplement à la frame suivante en cas d'échec ponctuel — plus de logique de reconnexion). Le proxy dev (`vite.config.ts`, `server.proxy["/api"].ws`) n'est plus nécessaire, retiré. Le point ci-dessous reste comme trace du diagnostic qui a mené à ce choix.
+
 **🟡 Signal encourageant le 2026-09-15** — retesté via `curl` avec les mêmes en-têtes d'upgrade WebSocket que le test initial : la requête renvoie maintenant `404` avec les en-têtes de la vraie app (`x-render-origin-server: uvicorn`, `cf-ray`, corps `{"detail":"Not Found"}`), là où elle renvoyait un `403` vide sans en-tête d'app. La requête atteint donc bien uvicorn maintenant — le blocage à la périphérie Cloudflare semble levé. Pas encore confirmé en conditions réelles dans le navigateur (poignée de main WebSocket complète, pas juste les en-têtes HTTP) : à retester pendant un vrai vol streaming avant de clore ce point.
 
 **Endpoints concernés** : `wss://vexdrone-osc.onrender.com/api/v1/vols/{flightId}/live-analyse` (analyse IA en direct pendant une mission téléphone en streaming).
@@ -71,5 +73,15 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 **Écart constaté, géré côté frontend, aucune action backend nécessaire** : `SdpPayload`/`SdpRead` ne portent qu'un champ `sdp` (pas de `type` "offer"/"answer"). Le frontend envoyait initialement l'objet `RTCSessionDescriptionInit` complet (`{ type, sdp }`) et attendait la même forme en retour — `setRemoteDescription()` a besoin de `type` pour fonctionner. Corrigé côté client (`client.ts`) : on n'envoie que `sdp`, et on reconstruit `type` à la lecture (`"offer"` ou `"answer"` selon l'endpoint appelé, cette info est déjà portée par le chemin). Aucun changement de schéma demandé au backend pour ça.
 
 ---
+
+## 8. Pas d'identifiant de structure/pylône sur une mission ou une image
+
+**Endpoints concernés** : `MissionCreate`/`MissionRead`/`MissionUpdate`, `ImageRead` (potentiellement — voir "Impact frontend").
+**Constaté (2026-09-16)** : le rapport de mission imprimable (nouveau, voir `src/pages/reports/MissionReportPrint.tsx`) reprend la charte graphique VEXDRONE et affiche, pour chaque anomalie, la structure/le pylône inspecté(e) (ex. "P-114 / Tronçon B") — un champ demandé explicitement pour ce gabarit. Aucun champ de ce type n'existe côté `Mission` ni côté `Image`/`Anomaly` dans le schéma live.
+**Impact frontend** : en attendant, ce champ est saisi manuellement par le technicien sur la page de garde du rapport et conservé en `localStorage` (`src/lib/missionStructure.ts`), un seul identifiant appliqué à toutes les pages/anomalies du rapport — même limite que les réglages d'entreprise (§2) : propre à cet appareil, non partagé entre technicien et admin, perdu si le technicien change de navigateur/téléphone.
+**Proposition** : à trancher avec l'équipe produit/backend selon le grain réel souhaité —
+- Option simple (mission-level) : un champ `structure` ou `troncon` (string, optionnel) sur `MissionCreate`/`MissionRead`/`MissionUpdate`, une valeur pour toute la mission. Suffisant si une mission couvre en pratique une seule structure.
+- Option fine (par photo) : un champ équivalent sur `ImageRead`/à la capture, si une mission peut couvrir plusieurs pylônes le long d'une ligne (cas réaliste pour une inspection de type "Ligne 225 kV" sur tout un tronçon) — implique aussi une UI de saisie par photo côté frontend, pas encore prévue.
+- Dans les deux cas, un champ texte libre suffit pour cette itération (pas besoin d'un référentiel de structures dédié).
 
 *(entrées suivantes ajoutées au fil de la construction des écrans Techniciens / Missions entreprise)*

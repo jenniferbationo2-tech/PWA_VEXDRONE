@@ -53,16 +53,39 @@ export function PhoneSender() {
         const pc = new RTCPeerConnection({ iceServers: STUN_SERVERS });
         pcRef.current = pc;
         mediaStream.getTracks().forEach((track) => pc.addTrack(track, mediaStream));
+        // "disconnected" est un etat transitoire frequent pendant la
+        // selection de la paire de candidats ICE (voir PhoneCaptureContext.tsx
+        // pour le meme correctif cote PC) — on laisse une marge avant de
+        // considerer que c'est une vraie coupure, plutot que d'afficher une
+        // erreur pendant que la connexion est en train de s'etablir normalement.
+        let disconnectTimer: ReturnType<typeof setTimeout> | null = null;
         pc.onconnectionstatechange = () => {
           if (cancelled) return;
-          if (pc.connectionState === "connected") setStatus("connected");
-          if (
-            pc.connectionState === "failed" ||
-            pc.connectionState === "disconnected" ||
-            pc.connectionState === "closed"
-          ) {
+          if (pc.connectionState === "connected") {
+            if (disconnectTimer) {
+              clearTimeout(disconnectTimer);
+              disconnectTimer = null;
+            }
+            setStatus("connected");
+            return;
+          }
+          if (pc.connectionState === "failed" || pc.connectionState === "closed") {
+            if (disconnectTimer) {
+              clearTimeout(disconnectTimer);
+              disconnectTimer = null;
+            }
             setStatus("error");
             setErrorMessage("Connexion perdue avec l'ordinateur.");
+            return;
+          }
+          if (pc.connectionState === "disconnected" && !disconnectTimer) {
+            disconnectTimer = setTimeout(() => {
+              disconnectTimer = null;
+              if (!cancelled && pc.connectionState !== "connected") {
+                setStatus("error");
+                setErrorMessage("Connexion perdue avec l'ordinateur.");
+              }
+            }, 8000);
           }
         };
 
@@ -71,7 +94,7 @@ export function PhoneSender() {
         // à échanger ici hormis l'offre puis la réponse elles-mêmes.
         const offer = await pollUntil(() => api.getSignalingOffer(pairingToken), {
           intervalMs: 2000,
-          timeoutMs: 60_000,
+          timeoutMs: 120_000,
         });
         if (cancelled) return;
         await pc.setRemoteDescription(offer);

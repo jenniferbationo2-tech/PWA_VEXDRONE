@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { X, Download, FileSpreadsheet, Share2, Mail, MessageCircle, FileText } from "lucide-react";
+import { X, Download, FileSpreadsheet, Share2, Mail, MessageCircle } from "lucide-react";
 import { IconButton } from "@/components/ui/IconButton";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import type { Report } from "@/lib/api/types";
@@ -34,26 +34,24 @@ function exportReportCsv(report: Report) {
   URL.revokeObjectURL(url);
 }
 
-function downloadPdf(report: Report) {
-  const a = document.createElement("a");
-  a.href = report.pdfUrl;
-  a.download = `rapport-${report.missionName.replace(/\s+/g, "_")}.pdf`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
+// Ouvre le rapport imprimable (page de garde + une page par anomalie, charte
+// VEXDRONE — voir MissionReportPrint.tsx) dans un nouvel onglet, plutôt que
+// de dépendre de report.pdfUrl : ce champ backend existe (voir ReportRead)
+// mais reste souvent vide, et de toute façon ne respecterait pas la charte
+// graphique demandée. Le technicien imprime/enregistre en PDF depuis cette page.
+function openPrintableReport(report: Report) {
+  window.open(`/rapports/${report.missionId}/imprimer`, "_blank", "noopener");
 }
 
 function buildShareText(report: Report) {
   const dateFR = new Date(report.date).toLocaleDateString("fr-FR");
-  const base = `Rapport de mission "${report.missionName}" (${report.zone}) — ${dateFR} — ${report.anomaliesCount} anomalie(s) détectée(s).`;
-  return report.pdfUrl && report.pdfUrl !== "#" ? `${base}\n${report.pdfUrl}` : base;
+  return `Rapport de mission "${report.missionName}" (${report.zone}) — ${dateFR} — ${report.anomaliesCount} anomalie(s) détectée(s).`;
 }
 
 export function ReportDetailModal({ report, onClose }: Props) {
   const [shareOpen, setShareOpen] = useState(false);
 
   const dateFR = report ? new Date(report.date).toLocaleDateString("fr-FR") : "";
-  const hasPdfPreview = report ? report.pdfUrl && report.pdfUrl !== "#" : false;
   const shareText = report ? buildShareText(report) : "";
 
   return (
@@ -82,7 +80,7 @@ export function ReportDetailModal({ report, onClose }: Props) {
           </div>
 
           <div className="flex items-center gap-1">
-            <IconButton icon={Download} label="Exporter en PDF" onClick={() => downloadPdf(report)} />
+            <IconButton icon={Download} label="Exporter en PDF" onClick={() => openPrintableReport(report)} />
             <IconButton icon={FileSpreadsheet} label="Exporter en CSV" onClick={() => exportReportCsv(report)} />
 
             <div className="relative">
@@ -129,14 +127,11 @@ export function ReportDetailModal({ report, onClose }: Props) {
           <span className="text-right font-semibold text-white">{report.anomaliesCount}</span>
         </div>
 
-        {hasPdfPreview ? (
-          <iframe title="Aperçu du rapport PDF" src={report.pdfUrl} className="h-64 w-full rounded-md border border-white/10" />
-        ) : (
-          <div className="flex h-40 flex-col items-center justify-center rounded-md border border-dashed border-white/15 text-center">
-            <FileText size={22} className="mb-2 text-white/50" />
-            <p className="text-[13px] text-white/60">Aperçu PDF indisponible</p>
-          </div>
-        )}
+        <iframe
+          title="Aperçu du rapport"
+          src={`/rapports/${report.missionId}/imprimer`}
+          className="h-64 w-full rounded-md border border-white/10 bg-white"
+        />
           </motion.div>
         </motion.div>
       )}

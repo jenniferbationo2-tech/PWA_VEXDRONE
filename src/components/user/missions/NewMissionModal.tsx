@@ -212,8 +212,9 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
       return;
     }
 
-    // Une mission naît toujours "en_attente" : elle ne passe "en_cours" que via
-    // le bouton "Lancer", et l'édition ne doit pas court-circuiter ce cycle.
+    // Une mission naît toujours "en_attente" : elle ne passe "en_cours" que par
+    // validation de l'admin (voir admin/Missions.tsx), et l'édition ne doit
+    // pas court-circuiter ce cycle.
     const status = isEditMode && mission ? mission.status : "en_attente";
 
     setSubmitting(true);

@@ -145,7 +145,11 @@ async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> 
 // pas y envoyer cookies/headers d'auth, y compris depuis le PC connecté.
 async function apiFetchOrNull404<T>(path: string): Promise<T | null> {
   const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${BASE_URL}${path}`, { credentials: "omit", signal: timeout }).catch((err) => {
+  // no-store : cette même URL est repollée toutes les 2s en attendant que
+  // l'autre pair dépose son SDP — sans ça, un cache intermédiaire (proxy,
+  // Cloudflare devant Render) pourrait resservir un 404 déjà observé au lieu
+  // de revérifier l'origine à chaque tour.
+  const res = await fetch(`${BASE_URL}${path}`, { credentials: "omit", cache: "no-store", signal: timeout }).catch((err) => {
     if (err instanceof DOMException && err.name === "TimeoutError") {
       throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
     }
@@ -195,6 +199,39 @@ async function apiUpload<T>(path: string, form: FormData): Promise<T> {
     credentials: "include",
     headers,
     body: form,
+    signal: timeout,
+  }).catch((err) => {
+    if (err instanceof DOMException && err.name === "TimeoutError") {
+      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+    }
+    throw err;
+  });
+
+  if (!res.ok) {
+    if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
+    throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
+  }
+  const data = await res.json();
+  captureCsrfToken(data);
+  return data;
+}
+
+// POST binaire brut (JPEG) : ni JSON (apiFetch fige Content-Type:
+// application/json) ni multipart (apiUpload) — l'analyse IA en direct
+// (PhoneCaptureContext.tsx) envoie directement les octets de la frame,
+// Content-Type: image/jpeg, comme documenté par le backend (doc §3.1, "pas de
+// JSON, pas de multipart").
+async function apiPostImage<T>(path: string, blob: Blob): Promise<T> {
+  const headers = new Headers({ "Content-Type": "image/jpeg" });
+  const token = getStoredCsrfToken();
+  if (token) headers.set("X-CSRF-Token", token);
+
+  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method: "POST",
+    credentials: "include",
+    headers,
+    body: blob,
     signal: timeout,
   }).catch((err) => {
     if (err instanceof DOMException && err.name === "TimeoutError") {
@@ -729,6 +766,17 @@ export const api = {
   getSignalingAnswer: async (token: string): Promise<RTCSessionDescriptionInit | null> => {
     const raw = await apiFetchOrNull404<{ sdp: string }>(`/api/v1/webrtc/${token}/answer`);
     return raw ? { type: "answer", sdp: raw.sdp } : null;
+  },
+
+  // Aperçu IA en direct pendant un vol streaming (voir PhoneCaptureContext.tsx,
+  // startLiveAnalyse) — remplace l'ancien WebSocket, bloqué en 403 par
+  // Cloudflare devant Render (voir BACKEND_REQUESTS.md §6). Endpoint public
+  // documenté §3 : un appel HTTP indépendant par frame (~400ms), rien à
+  // rouvrir en cas d'échec ponctuel — l'appelant réessaie juste à la frame
+  // suivante. Authentifié comme les autres POST (cookie + CSRF), contrairement
+  // aux endpoints /webrtc/ qui sont volontairement publics.
+  analyzeLiveFrame: async (flightId: string, frame: Blob): Promise<{ detections: unknown[] }> => {
+    return apiPostImage(`/api/v1/vols/${flightId}/live-analyse`, frame);
   },
 
   endFlight: async (flightId: string): Promise<void> => {
