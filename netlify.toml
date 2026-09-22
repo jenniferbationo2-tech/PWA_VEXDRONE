@@ -1,0 +1,37 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA : react-router-dom (BrowserRouter) gere le routing cote client, donc
+# toute URL profonde (ex: /missions/42) doit retomber sur index.html plutot
+# que sur un 404 Netlify.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    # Inventaire des ressources externes reellement chargees par l'app (voir
+    # src/) — pas un `default-src 'self'` generique qui casserait la moitie
+    # des fonctionnalites :
+    #  - style-src 'unsafe-inline' : ~16 `style={{...}}` React + Leaflet/
+    #    Framer Motion qui injectent des styles inline au runtime (pas
+    #    d'alternative raisonnable sans reecrire ces libs).
+    #  - fonts.googleapis.com / fonts.gstatic.com : Google Fonts (index.html).
+    #  - tile.openstreetmap.org : fond de carte react-leaflet (Carte.tsx).
+    #  - vexdrone-osc.onrender.com (https + wss) : API + WebSocket live-analyse.
+    #  - api.open-meteo.com : widget meteo (weather.ts).
+    #  - stun.l.google.com : serveur STUN WebRTC (camera distante telephone).
+    #  - img-src data: : avatar utilisateur encode en data URI (mode mock).
+    #  - *.sentry.io : ingestion des rapports d'erreur (src/lib/monitoring/sentry.ts).
+    # script-src reste strict (pas de 'unsafe-inline'/'unsafe-eval') : le seul
+    # script inline (detection theme sombre) a ete extrait vers /theme-init.js.
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' https://vexdrone-osc.onrender.com wss://vexdrone-osc.onrender.com https://api.open-meteo.com stun:stun.l.google.com:19302 https://*.sentry.io; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

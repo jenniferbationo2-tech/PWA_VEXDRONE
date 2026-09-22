@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { api } from "@/lib/api/client";
 import { getCaptureMode } from "@/lib/captureMode";
 import { validateMediaSelection } from "@/lib/mediaValidation";
@@ -155,7 +156,9 @@ export function MediaAnalysisCard() {
 
       {(phase === "idle" || phase === "ready") && (
         <div ref={missionFieldRef} className="relative mb-3">
-          <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">Mission</label>
+          <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+            Mission<RequiredMark />
+          </label>
           <button
             type="button"
             onClick={() => setMissionOpen((v) => !v)}

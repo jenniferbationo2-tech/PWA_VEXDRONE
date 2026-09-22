@@ -32,7 +32,7 @@ import {
   mockAnomalies,
   mockFlight,
 } from "./mockData";
-import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired } from "./auth";
+import { captureCsrfToken, getStoredCsrfToken, notifyAuthExpired, refreshCsrfToken, logout } from "./auth";
 import { sortByNewestFirst } from "@/lib/utils";
 import {
   toAnomaly,
@@ -95,37 +95,90 @@ function extractErrorDetail(body: unknown): string {
 // court couperait des requetes qui auraient fini par reussir.
 const REQUEST_TIMEOUT_MS = 65_000;
 
+// Un 403 protegeant du CSRF porte le header X-CSRF-Error : c'est le seul cas
+// ou le jeton (garde en memoire, perdu au reload) manque vraiment, et ou
+// forcer une reconnexion a du sens. Un 403 de permission ("cette mission ne
+// vous appartient pas") est un 403 tout aussi valide mais n'a rien a voir
+// avec la session — ne pas le confondre avec l'autre.
+function isCsrfExpiry(res: Response): boolean {
+  return res.headers.get("X-CSRF-Error") === "true";
+}
+
+// Un jeton CSRF perime en memoire ne veut pas forcement dire que la session
+// est morte : deux onglets ouverts sur la meme session (ex. "Exporter en
+// PDF" qui ouvre le rapport dans un nouvel onglet) desynchronisent chacun
+// leur propre copie en memoire des que l'un des deux obtient un jeton frais.
+// On tente donc un rattrapage (cookie de session encore valide) avant de
+// conclure a une session morte — dedupe : si plusieurs requetes echouent en
+// meme temps sur un jeton perime, une seule tentative de refresh suffit.
+let recoveringCsrf: Promise<boolean> | null = null;
+function recoverFromCsrfError(): Promise<boolean> {
+  if (!recoveringCsrf) {
+    recoveringCsrf = refreshCsrfToken()
+      .catch(() => false)
+      .finally(() => {
+        recoveringCsrf = null;
+      });
+  }
+  return recoveringCsrf;
+}
+
+// Le rattrapage a echoue : la session est reellement morte cote serveur.
+// On appelle quand meme /auth/logout (best-effort) avant de deconnecter
+// localement — sans ca, le backend garde ce compte marque "session active"
+// indefiniment, et la reconnexion echoue en 409 "deja connecte ailleurs"
+// meme depuis un autre navigateur (voir BACKEND_REQUESTS.md §9).
+async function handleDeadSession(): Promise<void> {
+  await logout().catch(() => {});
+  notifyAuthExpired();
+}
+
+// Partagee par apiFetch/apiUpload/apiPostImage : `doFetch` doit relire le
+// jeton CSRF a chaque appel (pas le capturer par closure avant le premier
+// essai), sinon la tentative retentee repart avec le meme jeton perime.
+async function fetchWithCsrfRecovery(doFetch: () => Promise<Response>, isCsrfProtected: boolean): Promise<Response> {
+  const res = await doFetch();
+  if (res.ok || !isCsrfProtected || !isCsrfExpiry(res)) return res;
+
+  const recovered = await recoverFromCsrfError();
+  if (!recovered) {
+    await handleDeadSession();
+    return res;
+  }
+  const retryRes = await doFetch();
+  if (!retryRes.ok && isCsrfExpiry(retryRes)) await handleDeadSession();
+  return retryRes;
+}
+
 async function apiFetch<T>(path: string, options: RequestInit = {}): Promise<T> {
   const method = (options.method ?? "GET").toUpperCase();
   const isCsrfProtected = CSRF_PROTECTED_METHODS.includes(method);
-  const headers = new Headers(options.headers);
-  headers.set("Content-Type", "application/json");
 
-  if (isCsrfProtected) {
-    const token = getStoredCsrfToken();
-    if (token) headers.set("X-CSRF-Token", token);
+  async function doFetch(): Promise<Response> {
+    const headers = new Headers(options.headers);
+    headers.set("Content-Type", "application/json");
+    if (isCsrfProtected) {
+      const token = getStoredCsrfToken();
+      if (token) headers.set("X-CSRF-Token", token);
+    }
+
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    return fetch(`${BASE_URL}${path}`, {
+      ...options,
+      headers,
+      credentials: "include",
+      signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
+    }).catch((err) => {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+      }
+      throw err;
+    });
   }
 
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    ...options,
-    headers,
-    credentials: "include",
-    signal: options.signal ? AbortSignal.any([options.signal, timeout]) : timeout,
-  }).catch((err) => {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
-    }
-    throw err;
-  });
+  const res = await fetchWithCsrfRecovery(doFetch, isCsrfProtected);
 
   if (!res.ok) {
-    // Un 403 protegeant du CSRF porte le header X-CSRF-Error : c'est le seul
-    // cas ou le jeton (garde en memoire, perdu au reload) manque vraiment, et
-    // ou forcer une reconnexion a du sens. Un 403 de permission ("cette
-    // mission ne vous appartient pas") est un 403 tout aussi valide mais n'a
-    // rien a voir avec la session — ne pas le confondre avec l'autre.
-    if (isCsrfProtected && res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
     throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
   }
   if (res.status === 204) return undefined as T;
@@ -189,26 +242,29 @@ async function publicPost(path: string, body: unknown): Promise<void> {
 // Content-Type: application/json (casserait la frontière multipart — le
 // navigateur doit fixer lui-même le boundary).
 async function apiUpload<T>(path: string, form: FormData): Promise<T> {
-  const headers = new Headers();
-  const token = getStoredCsrfToken();
-  if (token) headers.set("X-CSRF-Token", token);
+  async function doFetch(): Promise<Response> {
+    const headers = new Headers();
+    const token = getStoredCsrfToken();
+    if (token) headers.set("X-CSRF-Token", token);
 
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: form,
-    signal: timeout,
-  }).catch((err) => {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
-    }
-    throw err;
-  });
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    return fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: form,
+      signal: timeout,
+    }).catch((err) => {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+      }
+      throw err;
+    });
+  }
+
+  const res = await fetchWithCsrfRecovery(doFetch, true);
 
   if (!res.ok) {
-    if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
     throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
   }
   const data = await res.json();
@@ -222,26 +278,29 @@ async function apiUpload<T>(path: string, form: FormData): Promise<T> {
 // Content-Type: image/jpeg, comme documenté par le backend (doc §3.1, "pas de
 // JSON, pas de multipart").
 async function apiPostImage<T>(path: string, blob: Blob): Promise<T> {
-  const headers = new Headers({ "Content-Type": "image/jpeg" });
-  const token = getStoredCsrfToken();
-  if (token) headers.set("X-CSRF-Token", token);
+  async function doFetch(): Promise<Response> {
+    const headers = new Headers({ "Content-Type": "image/jpeg" });
+    const token = getStoredCsrfToken();
+    if (token) headers.set("X-CSRF-Token", token);
 
-  const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
-  const res = await fetch(`${BASE_URL}${path}`, {
-    method: "POST",
-    credentials: "include",
-    headers,
-    body: blob,
-    signal: timeout,
-  }).catch((err) => {
-    if (err instanceof DOMException && err.name === "TimeoutError") {
-      throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
-    }
-    throw err;
-  });
+    const timeout = AbortSignal.timeout(REQUEST_TIMEOUT_MS);
+    return fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      credentials: "include",
+      headers,
+      body: blob,
+      signal: timeout,
+    }).catch((err) => {
+      if (err instanceof DOMException && err.name === "TimeoutError") {
+        throw new Error(`Le serveur ne répond pas (délai dépassé) sur ${path}`);
+      }
+      throw err;
+    });
+  }
+
+  const res = await fetchWithCsrfRecovery(doFetch, true);
 
   if (!res.ok) {
-    if (res.headers.get("X-CSRF-Error") === "true") notifyAuthExpired();
     throw new Error(`${extractErrorDetail(await res.json().catch(() => null))} (${res.status})`);
   }
   const data = await res.json();

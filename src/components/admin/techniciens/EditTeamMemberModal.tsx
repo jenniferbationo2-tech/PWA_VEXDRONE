@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 import type { PlatformUser, UpdateTeamMemberInput } from "@/lib/api/types";
 
@@ -86,13 +87,13 @@ export function EditTeamMemberModal({ open, member, onClose, onSave }: Props) {
             <form onSubmit={handleSubmit} className="space-y-3.5">
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Nom complet
+                  Nom complet<RequiredMark />
                 </label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Awa Compaoré" autoFocus />
               </div>
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Email
+                  Email<RequiredMark />
                 </label>
                 <Input
                   type="email"

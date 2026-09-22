@@ -6,6 +6,7 @@ import { api } from "@/lib/api/client";
 import type { Entreprise } from "@/lib/api/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
@@ -249,24 +250,44 @@ export function EntrepriseDetailModal({ open, entreprise, onClose }: Props) {
             <h4 className="font-display text-[13px] font-semibold text-brand-blue-dark dark:text-white">
               Nouvel administrateur
             </h4>
-            <Input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nom complet" />
-            <Input
-              value={adminUsername}
-              onChange={(e) => setAdminUsername(e.target.value.toLowerCase())}
-              placeholder="nomutilisateur (minuscules/chiffres)"
-            />
-            <Input
-              type="email"
-              value={adminEmail}
-              onChange={(e) => setAdminEmail(e.target.value)}
-              placeholder="admin@entreprise.bf"
-            />
-            <Input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="Mot de passe (8+ car., 1 chiffre)"
-            />
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Nom complet<RequiredMark />
+              </label>
+              <Input value={adminName} onChange={(e) => setAdminName(e.target.value)} placeholder="Nom complet" />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Nom d'utilisateur<RequiredMark />
+              </label>
+              <Input
+                value={adminUsername}
+                onChange={(e) => setAdminUsername(e.target.value.toLowerCase())}
+                placeholder="nomutilisateur (minuscules/chiffres)"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Email<RequiredMark />
+              </label>
+              <Input
+                type="email"
+                value={adminEmail}
+                onChange={(e) => setAdminEmail(e.target.value)}
+                placeholder="admin@entreprise.bf"
+              />
+            </div>
+            <div>
+              <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                Mot de passe<RequiredMark />
+              </label>
+              <Input
+                type="password"
+                value={adminPassword}
+                onChange={(e) => setAdminPassword(e.target.value)}
+                placeholder="Mot de passe (8+ car., 1 chiffre)"
+              />
+            </div>
             {adminError && <p className="text-[13px] font-medium text-brand-orange">⚠ {adminError}</p>}
             <div className="flex justify-end gap-2.5">
               <Button type="button" variant="secondary" size="sm" onClick={() => setAddingAdmin(false)}>

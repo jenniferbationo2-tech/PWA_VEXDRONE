@@ -84,4 +84,27 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 - Option fine (par photo) : un champ équivalent sur `ImageRead`/à la capture, si une mission peut couvrir plusieurs pylônes le long d'une ligne (cas réaliste pour une inspection de type "Ligne 225 kV" sur tout un tronçon) — implique aussi une UI de saisie par photo côté frontend, pas encore prévue.
 - Dans les deux cas, un champ texte libre suffit pour cette itération (pas besoin d'un référentiel de structures dédié).
 
+## 9. Session unique par compte : pas de TTL connu, pas d'échappatoire si le verrou reste posé
+
+**Endpoints concernés** : `POST /auth/login` (409 "Account already has an active session elsewhere"), `POST /auth/logout`, `POST /auth/refresh-csrf`.
+**Constaté (2026-09-17)** : un technicien s'est retrouvé bloqué en boucle — déconnecté avec "ta session a expiré" en quelques minutes de test, puis `/auth/login` rejeté en 409 ("déjà connecté ailleurs") même depuis un autre navigateur, sans aucun moyen de s'en sortir. Cause identifiée côté frontend : `notifyAuthExpired()` (déclenché sur un 403 `X-CSRF-Error`, jeton CSRF périmé en mémoire — ex. deux onglets ouverts sur la même session, cas fréquent depuis que "Exporter en PDF" ouvre le rapport dans un nouvel onglet) ne faisait **que** déconnecter localement, sans jamais appeler `/auth/logout`. Le compte restait donc marqué "session active" côté serveur indéfiniment, bloquant toute reconnexion — y compris depuis un poste totalement différent, puisque le verrou est lié au compte, pas au navigateur/cookie.
+**Corrigé côté frontend (2026-09-17)** : avant de conclure à une session morte, le client retente désormais un `POST /auth/refresh-csrf` (qui lit le cookie de session, pas le jeton périmé) et rejoue la requête une fois si un jeton frais est obtenu — la grande majorité des "faux" 403 (juste un jeton désynchronisé entre onglets) devraient se résorber silencieusement. Si le rattrapage échoue aussi (session réellement morte), le client appelle maintenant `/auth/logout` en best-effort avant de déconnecter localement, pour libérer le verrou.
+**Impact/risque résiduel** : ce correctif suppose que `/auth/logout` réussit même avec un jeton CSRF périmé (sinon l'appel échoue silencieusement, sans libérer le verrou) — non vérifié côté schéma, le paramètre `X-CSRF-Token` de `/auth/logout` est documenté `required: false` mais cette annotation est générique à tous les endpoints dans le schéma live, pas fiable comme preuve d'exemption réelle.
+**Proposition** :
+- Confirmer explicitement si `/auth/logout` est exempté de la vérification CSRF stricte (ou n'a besoin que du cookie de session) — sinon le correctif frontend ci-dessus ne résout pas tous les cas.
+- Documenter (ou ajouter) un TTL d'expiration du verrou "session active" côté serveur, indépendant de la durée de vie du cookie/token — pour qu'un compte ne reste jamais bloqué indéfiniment même si un client ne parvient jamais à appeler `/auth/logout` (crash, fermeture brutale de l'onglet, bug futur...).
+- Envisager un mécanisme de reprise en libre-service sur le 409 : par ex. un flag `force=true` sur `POST /auth/login` qui invalide l'ancienne session avant d'en créer une nouvelle, pour ne plus jamais dépendre uniquement d'un logout propre côté client.
+
+## 10. Whitelist CORS à mettre à jour pour le domaine de prod Netlify
+
+**Endpoints concernés** : tous (`CORSMiddleware` global, testé sur `GET /api/v1/dashboard/stats`).
+**Constaté (2026-09-22)** : préflight `OPTIONS` testé en direct contre l'API live avec différents en-têtes `Origin` :
+- `Origin: http://localhost:5173` → `200 OK`, `access-control-allow-origin: http://localhost:5173` (whitelisté).
+- `Origin: https://localhost:5173` → `400 Bad Request`, corps `Disallowed CORS origin` (sans impact actuellement : en dev le proxy Vite masque le cross-origin, la requête part en same-origin depuis le navigateur — mais ça confirme que la liste est à correspondance exacte par origine, pas de motif générique type `*.netlify.app`).
+- `Origin: https://<sous-domaine-quelconque>.netlify.app` → `400 Bad Request`, même rejet.
+**Impact frontend** : le frontend est déployé sur Netlify (voir `netlify.toml`), avec `VITE_API_BASE_URL=https://vexdrone-osc.onrender.com` — un appel cross-origin réel, contrairement au dev local où le proxy Vite masque le problème. Comme `client.ts` envoie chaque requête avec `credentials: "include"` (cookie de session + CSRF), le navigateur appliquera strictement le CORS en prod : tant que le domaine Netlify exact n'est pas ajouté à la whitelist serveur, **tous** les appels API échoueront depuis le site déployé (login inclus), avec un échec silencieux côté UI (erreur réseau générique, pas un message explicite).
+**Proposition** :
+- Ajouter le domaine de prod Netlify (ex. `https://vexdrone.netlify.app` ou le domaine personnalisé retenu) à la liste `allow_origins` du `CORSMiddleware`.
+- Si des deploy previews Netlify sont utilisés pour tester avant merge (domaines `https://<hash>--vexdrone.netlify.app`, différents à chaque déploiement), prévoir soit un motif générique (regex sur le sous-domaine), soit accepter que seules les previews ne pourront pas taper l'API tant qu'elles ne sont pas explicitement whitelistées.
+
 *(entrées suivantes ajoutées au fil de la construction des écrans Techniciens / Missions entreprise)*

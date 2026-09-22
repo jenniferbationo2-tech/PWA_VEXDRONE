@@ -5,6 +5,7 @@ import { Plus, Tags, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
@@ -123,7 +124,12 @@ export function MissionTypesModal({ open, onClose }: Props) {
 
             <form onSubmit={handleAdd} className="space-y-3 rounded-lg border border-white/10 p-4">
               <h4 className="font-display text-[13px] font-semibold text-white">Ajouter un type</h4>
-              <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Inspection préventive" />
+              <div>
+                <label className="mb-1.5 block text-[13px] font-medium text-white">
+                  Nom<RequiredMark />
+                </label>
+                <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex. Inspection préventive" />
+              </div>
               {error && <p className="text-[13px] font-medium text-brand-orange">⚠ {error}</p>}
               <div className="flex justify-end">
                 <Button type="submit" size="sm" className="gap-1.5" disabled={createMutation.isPending}>

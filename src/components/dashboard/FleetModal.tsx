@@ -5,6 +5,7 @@ import { Plane, Plus, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { Badge } from "@/components/ui/badge";
 import { ConfirmDialog } from "@/components/ui/ConfirmDialog";
 import { Skeleton } from "@/components/ui/Skeleton";
@@ -171,8 +172,18 @@ export function FleetModal({ open, onClose }: Props) {
           <h4 className="font-display text-[13px] font-semibold text-brand-blue-dark dark:text-white">
             Ajouter un drone
           </h4>
-          <Input value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} placeholder="Identifiant (ex. DRONE-04)" />
-          <Input value={modele} onChange={(e) => setModele(e.target.value)} placeholder="Modèle (optionnel)" />
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+              Identifiant<RequiredMark />
+            </label>
+            <Input value={identifiant} onChange={(e) => setIdentifiant(e.target.value)} placeholder="Ex. DRONE-04" />
+          </div>
+          <div>
+            <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+              Modèle
+            </label>
+            <Input value={modele} onChange={(e) => setModele(e.target.value)} placeholder="Modèle (optionnel)" />
+          </div>
           {error && <p className="text-[13px] font-medium text-brand-orange">⚠ {error}</p>}
           <div className="flex justify-end">
             <Button type="submit" size="sm" className="gap-1.5" disabled={createMutation.isPending}>

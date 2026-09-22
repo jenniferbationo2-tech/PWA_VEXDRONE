@@ -526,7 +526,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         return;
       }
       beginCapturing(mediaStream, missionId, flightId, startingCount);
-    } catch (err) {
+    } catch {
       if (isStale()) return;
       pc.close();
       if (pcRef.current === pc) pcRef.current = null;
@@ -589,6 +589,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   }, [flight, isError, missions]);
 
   // Coupe la caméra si le provider lui-même est démonté (déconnexion de l'app).
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- volontairement au demontage seulement, pas a chaque redefinition de `stop`
   useEffect(() => stop, []);
 
   return (

@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
 
 interface Props {
@@ -82,7 +83,7 @@ export function NewEntrepriseModal({ open, onClose, onSave }: Props) {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Nom de l'entreprise
+                  Nom de l'entreprise<RequiredMark />
                 </label>
                 <Input value={nom} onChange={(e) => setNom(e.target.value)} placeholder="Sonabel" autoFocus />
               </div>

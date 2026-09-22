@@ -4,6 +4,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X, Smartphone, PlaneTakeoff, ChevronDown, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { isPastDate } from "@/lib/missionStatus";
 import { api } from "@/lib/api/client";
 import { modalTransition, modalVariants, overlayTransition, overlayVariants } from "@/lib/motion";
@@ -301,7 +302,9 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
 
           {!isEditMode && appareil === "drone" && (
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-white">Drone</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">
+                Drone<RequiredMark />
+              </label>
               {availableDrones.length === 0 ? (
                 <p className="rounded-sm border border-white/15 bg-white/5 px-3 py-2.5 text-[13px] text-white/60">
                   Aucun drone disponible actuellement.
@@ -339,12 +342,16 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-white">Nom de la mission</label>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">
+              Nom de la mission<RequiredMark />
+            </label>
             <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Inspection ligne Nord" />
           </div>
 
           <div>
-            <label className="mb-1.5 block text-[13px] font-medium text-white">Zone</label>
+            <label className="mb-1.5 block text-[13px] font-medium text-white">
+              Zone<RequiredMark />
+            </label>
             <Input value={zone} onChange={(e) => setZone(e.target.value)} placeholder="Zone A" />
           </div>
 
@@ -355,11 +362,15 @@ export function NewMissionModal({ open, mission, onClose, onSave }: Props) {
 
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-white">Date de début</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">
+                Date de début<RequiredMark />
+              </label>
               <Input type="date" value={dateDebut} onChange={(e) => setDateDebut(e.target.value)} />
             </div>
             <div>
-              <label className="mb-1.5 block text-[13px] font-medium text-white">Date de fin</label>
+              <label className="mb-1.5 block text-[13px] font-medium text-white">
+                Date de fin<RequiredMark />
+              </label>
               <Input type="date" value={dateFin} onChange={(e) => setDateFin(e.target.value)} />
             </div>
           </div>

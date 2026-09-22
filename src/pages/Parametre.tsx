@@ -3,6 +3,7 @@ import { Camera, Loader2 } from "lucide-react";
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { getInitials, prettifyUsername } from "@/lib/utils";
 
@@ -12,15 +13,10 @@ const MAX_AVATAR_SIZE = 2 * 1024 * 1024;
 export function Parametres() {
   const { user, updateProfile, changePassword, updateAvatar } = useAuth();
 
-  if (!user) return null;
-
-  const displayName = user.name || prettifyUsername(user.username);
-  const initials = getInitials(displayName);
-
-  const [name, setName] = useState(user.name ?? "");
-  const [email, setEmail] = useState(user.email ?? "");
-  const [organisation, setOrganisation] = useState(user.organisation ?? "");
-  const [zone, setZone] = useState(user.zone ?? "");
+  const [name, setName] = useState(user?.name ?? "");
+  const [email, setEmail] = useState(user?.email ?? "");
+  const [organisation, setOrganisation] = useState(user?.organisation ?? "");
+  const [zone, setZone] = useState(user?.zone ?? "");
   const [profileError, setProfileError] = useState<string | null>(null);
   const [profileSuccess, setProfileSuccess] = useState(false);
   const [savingProfile, setSavingProfile] = useState(false);
@@ -35,6 +31,14 @@ export function Parametres() {
   const [passwordError, setPasswordError] = useState<string | null>(null);
   const [passwordSuccess, setPasswordSuccess] = useState(false);
   const [savingPassword, setSavingPassword] = useState(false);
+
+  // Garde placee apres tous les hooks (pas avant) : `user` passe de null a
+  // non-null de facon asynchrone (voir AuthContext), et un `return` avant les
+  // hooks casserait leur ordre entre deux rendus (Rules of Hooks).
+  if (!user) return null;
+
+  const displayName = user.name || prettifyUsername(user.username);
+  const initials = getInitials(displayName);
 
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -173,7 +177,9 @@ export function Parametres() {
 
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
-                <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">Nom affiché</label>
+                <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
+                  Nom affiché<RequiredMark />
+                </label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Mounira Diallo" />
               </div>
               <div>
@@ -224,7 +230,7 @@ export function Parametres() {
           <form onSubmit={handlePasswordSubmit} className="space-y-4">
             <div>
               <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                Mot de passe actuel
+                Mot de passe actuel<RequiredMark />
               </label>
               <Input
                 type="password"
@@ -237,7 +243,7 @@ export function Parametres() {
             <div className="grid gap-4 sm:grid-cols-2">
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Nouveau mot de passe
+                  Nouveau mot de passe<RequiredMark />
                 </label>
                 <Input
                   type="password"
@@ -248,7 +254,7 @@ export function Parametres() {
               </div>
               <div>
                 <label className="mb-1.5 block text-[13px] font-medium text-brand-blue-dark dark:text-white">
-                  Confirmer le mot de passe
+                  Confirmer le mot de passe<RequiredMark />
                 </label>
                 <Input
                   type="password"

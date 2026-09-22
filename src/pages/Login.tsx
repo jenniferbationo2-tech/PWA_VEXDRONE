@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import { roleHome } from "@/lib/Auth/roles";
+import { RequiredMark } from "@/components/ui/RequiredMark";
 
 
 export function Login() {
@@ -76,7 +77,7 @@ export function Login() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label htmlFor="username" className="mb-1.5 block text-[13px] font-medium text-white/80">
-              Nom d'utilisateur
+              Nom d'utilisateur<RequiredMark />
             </label>
             <input
               id="username"
@@ -91,7 +92,7 @@ export function Login() {
 
           <div>
             <label htmlFor="password" className="mb-1.5 block text-[13px] font-medium text-white/80">
-              Mot de passe
+              Mot de passe<RequiredMark />
             </label>
             <input
               id="password"

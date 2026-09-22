@@ -210,20 +210,24 @@ function localGetProfileExtras(username: string): { organisation?: string; zone?
   return JSON.parse(localStorage.getItem(`vexdrone_profile_extra_${username}`) ?? "{}");
 }
 
-// Recupere un jeton CSRF perdu (ex: apres un rechargement de page) a partir
-// du cookie de session, qui lui survit au reload. Cet endpoint ne demande
-// pas de CSRF lui-meme — c'est le seul moyen de se rattraper sans repasser
-// par un vrai login, qui echouerait par-dessus une session encore active.
-// A appeler au demarrage, avant qu'une requete protegee ne declenche un 403.
-export async function refreshCsrfToken(): Promise<void> {
-  if (USE_MOCK) return;
+// Recupere un jeton CSRF perdu (ex: apres un rechargement de page, ou perime
+// par la rotation d'un autre onglet sur la meme session) a partir du cookie
+// de session, qui lui survit au reload. Cet endpoint ne demande pas de CSRF
+// lui-meme — c'est le seul moyen de se rattraper sans repasser par un vrai
+// login, qui echouerait par-dessus une session encore active (409). Retourne
+// si la session cote serveur est encore valide (utilise par client.ts pour
+// decider de retenter une requete plutot que de conclure a une session morte
+// — voir handleCsrfError).
+export async function refreshCsrfToken(): Promise<boolean> {
+  if (USE_MOCK) return true;
   const res = await fetch(`${BASE_URL}/api/v1/auth/refresh-csrf`, {
     method: "POST",
     credentials: "include",
   });
-  if (!res.ok) return;
+  if (!res.ok) return false;
   const data = await res.json();
   captureCsrfToken(data);
+  return true;
 }
 
 // ---- Export unique, le reste de l'app ne sait pas laquelle est active ----
