@@ -10,7 +10,7 @@ import { AppShell } from "@/components/layout/AppShell";
 import { Login } from "@/pages/Login";
 
 // Un chunk par écran (chargé à la navigation, pas au démarrage) plutôt qu'un
-// seul bundle de ~940 Ko : Leaflet (Carte) et le module médias/IA (Anomalies)
+// seul bundle de ~940 Ko : MapLibre (Carte) et le module médias/IA (Anomalies)
 // sont les plus lourds à sortir du chargement initial.
 const PhoneSender = lazy(() => import("@/pages/PhoneSender").then((m) => ({ default: m.PhoneSender })));
 const Dashboard = lazy(() => import("@/pages/user/Dashboard").then((m) => ({ default: m.Dashboard })));

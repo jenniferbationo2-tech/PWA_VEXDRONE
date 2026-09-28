@@ -5,7 +5,6 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { App } from "./App";
 import { ErrorFallback } from "./components/ErrorFallback";
 import { initSentry } from "./lib/monitoring/sentry";
-import "leaflet/dist/leaflet.css";
 import "./index.css";
 
 initSentry();

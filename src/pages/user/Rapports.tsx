@@ -33,7 +33,19 @@ export function Rapports() {
     setDateTo("");
   }
 
-  const { active, archived } = useMemo(() => partitionReports(reports ?? []), [reports]);
+  // Un rapport = une mission terminee (id rapport = uuid mission) : son
+  // updated_at donne l'heure de cloture, seule donnee fiable pour mettre le
+  // rapport qui vient d'etre genere en tete (voir partitionReports). Meme cle
+  // que Missions.tsx/Vols.tsx, donc invalidee a la cloture de la mission.
+  const { data: missions, isLoading: missionsLoading } = useQuery({
+    queryKey: ["missions"],
+    queryFn: api.getMissions,
+  });
+
+  const { active, archived } = useMemo(() => {
+    const closedAt = new Map((missions ?? []).map((m) => [m.id, m.updatedAt]));
+    return partitionReports(reports ?? [], (r) => closedAt.get(r.missionId));
+  }, [reports, missions]);
 
   const visible = useMemo(() => {
     const source = tab === "recentes" ? active : archived;
@@ -114,7 +126,9 @@ export function Rapports() {
         )}
       </div>
 
-      {isLoading ? (
+      {/* Attend aussi les missions : sans elles le tri retombe sur la date
+          planifiee et le tableau "saute" une fois l'ordre reel connu. */}
+      {isLoading || missionsLoading ? (
         <TableSkeleton columns={4} />
       ) : isError ? (
         <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">

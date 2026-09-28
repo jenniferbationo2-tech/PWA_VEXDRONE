@@ -569,6 +569,7 @@ export const api = {
         appareil: mockMissions[index].appareil,
         droneId: mockMissions[index].droneId,
         createdAt: mockMissions[index].createdAt,
+        updatedAt: new Date().toISOString(),
       };
       return delay(mockMissions[index], 400);
     }

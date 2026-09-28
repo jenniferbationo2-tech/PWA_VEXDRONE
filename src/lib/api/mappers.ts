@@ -100,6 +100,7 @@ export function toMission(raw: BackendMission): Mission {
     typeMissionId: raw.type_mission_uuid ?? undefined,
     userId: String(raw.user_id),
     createdAt: raw.created_at,
+    updatedAt: raw.updated_at ?? undefined,
   };
 }
 

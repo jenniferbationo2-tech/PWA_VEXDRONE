@@ -22,11 +22,16 @@
     # Inventaire des ressources externes reellement chargees par l'app (voir
     # src/) — pas un `default-src 'self'` generique qui casserait la moitie
     # des fonctionnalites :
-    #  - style-src 'unsafe-inline' : ~16 `style={{...}}` React + Leaflet/
+    #  - style-src 'unsafe-inline' : ~16 `style={{...}}` React + MapLibre/
     #    Framer Motion qui injectent des styles inline au runtime (pas
     #    d'alternative raisonnable sans reecrire ces libs).
     #  - fonts.googleapis.com / fonts.gstatic.com : Google Fonts (index.html).
-    #  - tile.openstreetmap.org : fond de carte react-leaflet (Carte.tsx).
+    #  - basemaps.cartocdn.com / *.basemaps.cartocdn.com : fonds Plan CARTO
+    #    (style.json, tuiles vectorielles, sprites, polices) - MapLibre les
+    #    charge via fetch, donc connect-src et non img-src.
+    #  - server.arcgisonline.com : fond Satellite Esri (src/lib/map/styles.ts).
+    #  - worker-src 'self' : worker MapLibre, servi depuis l'origine de l'app.
+    #  - img-src blob: : MapLibre decode certaines images via des URL blob:.
     #  - vexdrone-osc.onrender.com (https + wss) : API + WebSocket live-analyse.
     #  - api.open-meteo.com : widget meteo (weather.ts).
     #  - stun.l.google.com : serveur STUN WebRTC (camera distante telephone).
@@ -34,4 +39,4 @@
     #  - *.sentry.io : ingestion des rapports d'erreur (src/lib/monitoring/sentry.ts).
     # script-src reste strict (pas de 'unsafe-inline'/'unsafe-eval') : le seul
     # script inline (detection theme sombre) a ete extrait vers /theme-init.js.
-    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https://*.tile.openstreetmap.org; connect-src 'self' https://vexdrone-osc.onrender.com wss://vexdrone-osc.onrender.com https://api.open-meteo.com stun:stun.l.google.com:19302 https://*.sentry.io; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+    Content-Security-Policy = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; worker-src 'self'; connect-src 'self' https://vexdrone-osc.onrender.com wss://vexdrone-osc.onrender.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://server.arcgisonline.com stun:stun.l.google.com:19302 https://*.sentry.io; media-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"

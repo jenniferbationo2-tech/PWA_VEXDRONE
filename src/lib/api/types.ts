@@ -122,6 +122,11 @@ export interface Mission {
   // Horodatage serveur — sert au tri "plus récent en premier" (voir
   // sortByNewestFirst dans lib/utils.ts), jamais affiché tel quel.
   createdAt: string;
+  // Dernière écriture serveur — pour une mission "terminee", c'est le moment
+  // de la clôture (le PATCH statut=terminee de Vols.tsx est la dernière
+  // écriture). Sert à classer le rapport qui vient d'être généré en tête de
+  // Rapports.tsx, date_mission n'étant que la date planifiée.
+  updatedAt?: string;
 }
 
 // Catégorie de mission créée par un Admin, visible uniquement par les

@@ -24,7 +24,7 @@ directement.
 
 1. Missions — table filtrable, proche de RecentAlertsTable en structure
 2. IA & Anomalies — table + panneau de détail (layout 2 colonnes comme la maquette)
-3. Carte — react-leaflet, calque markers depuis `Anomaly.gps`
+3. Carte — MapLibre GL (react-map-gl), fonds Plan/Satellite, markers depuis `Anomaly.gps`
 4. Vol en cours — polling ou WebSocket pour la télémétrie live
 5. Rapports — table + lien téléchargement PDF
 

@@ -143,6 +143,9 @@ export function Anomalies() {
         </div>
 
         <div className="lg:col-span-2">
+          {/* Pendant de "Résultat analyse" à gauche : sans titre, cette carte
+              démarrait plus haut que le tableau d'à côté. */}
+          <CardTitle className="mb-3">Détail de l'anomalie</CardTitle>
           {selected ? (
             <div className="rounded-lg border border-brand-blue/[0.06] bg-white p-5 shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
               <CardTitle className="mb-3">Image analysée</CardTitle>
