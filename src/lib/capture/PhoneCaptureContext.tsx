@@ -11,7 +11,13 @@ import { STUN_SERVERS, waitForIceGatheringComplete, pollUntil, createRemoteTrack
 // backend (1 image / 2s), avec un peu de marge pour laisser le temps à
 // l'upload + l'analyse de la capture précédente de se terminer.
 const CAPTURE_INTERVAL_MS = 3000;
-const JPEG_QUALITY = 0.8;
+// Qualite a 0.92 (meme compromis que client.ts, compressImageFile) : cette
+// capture persiste l'image et alimente l'analyse officielle, contrairement a
+// LIVE_ANALYSE_JPEG_QUALITY ci-dessous - ne pas les aligner par symetrie.
+// Volontairement pas au maximum (1.0) : l'upload doit rester rapide sur une
+// connexion terrain instable, 0.92 offre l'essentiel du gain de signal sans
+// alourdir le fichier autant qu'une qualite proche du sans-perte.
+const JPEG_QUALITY = 0.92;
 // Au-delà de ce nombre d'échecs d'affilée, on considère que la capture ne
 // remonte plus rien (pas juste un raté isolé) et on alerte le technicien.
 const FAILURE_ALERT_THRESHOLD = 3;

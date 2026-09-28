@@ -376,13 +376,31 @@ async function fetchAnomaliesWithImages(itemsPerPage = 100): Promise<Anomaly[]> 
   return sortByNewestFirst(raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid))), (a) => a.detectedAt);
 }
 
-// Recompresse un fichier image en JPEG qualite 0.8 avant l'upload (memes
-// reglages que la capture live, voir PhoneCaptureContext.tsx) — recommande
-// par la doc backend (compression cote app, pas cote serveur). Renvoie le
-// fichier original si la compression echoue plutot que de bloquer l'import.
-const IMAGE_COMPRESSION_QUALITY = 0.8;
+// Recompresse un fichier image avant l'upload — recommande par la doc
+// backend (compression cote app, pas cote serveur, qui resterait un goulot
+// d'etranglement). Renvoie le fichier original si la compression echoue
+// plutot que de bloquer l'import.
+//
+// Qualite a 0.92 (pas plus) : compromis entre vitesse d'upload sur le
+// terrain (fichier trop lourd = trop lent sur une connexion instable) et
+// signal preserve pour l'IA - 0.8 faisait chuter un score de detection de
+// moitie (0.10 -> 0.03) sur une classe deja proche du seuil, mais monter a
+// qualite max (1.0)/sans compression ralentit l'upload pour un gain de
+// signal marginal au-dela de 0.92. Sans rapport avec
+// LIVE_ANALYSE_JPEG_QUALITY (PhoneCaptureContext.tsx), volontairement plus
+// bas : l'apercu live n'est jamais la source de verite, contrairement a ce
+// qui passe par ici.
+//
+// Fichiers deja assez petits envoyes tels quels : un JPEG de smartphone/drone
+// est deja compresse par l'appareil - le decoder puis le reencoder ici lui
+// inflige une deuxieme generation de perte sans aucun gain de taille.
+const IMAGE_COMPRESSION_QUALITY = 0.92;
+const COMPRESSION_PASSTHROUGH_MAX_BYTES = 8 * 1024 * 1024;
 
 async function compressImageFile(file: File): Promise<Blob> {
+  if (file.type === "image/jpeg" && file.size <= COMPRESSION_PASSTHROUGH_MAX_BYTES) {
+    return file;
+  }
   try {
     const bitmap = await createImageBitmap(file);
     const canvas = document.createElement("canvas");
