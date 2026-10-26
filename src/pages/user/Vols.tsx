@@ -180,18 +180,12 @@ export function Vols() {
   const verification = useAnalysisVerification(flight?.missionId, { enabled: !!flight });
   const missionImages = verification.images;
 
-  // Meme cle que Anomalies.tsx/Carte.tsx : dedupe la requete si ces pages
-  // sont deja montees. Pas de filtre par mission cote API (voir client.ts),
-  // donc on filtre cote client comme le reste du module anomalies.
-  const { data: anomalies } = useQuery({
-    queryKey: ["anomalies"],
-    queryFn: api.getAnomalies,
-    enabled: !!flight,
-    refetchInterval: 4000,
-  });
-  const anomaliesCount = flight
-    ? anomalies?.filter((a) => a.missionId === flight.missionId).length ?? 0
-    : 0;
+  // Anomalies relues image par image (voir useImageAnomalies.ts) — plus de
+  // liste globale repollee toutes les 4 s, dont les requetes en echec
+  // produisaient un faux "Tout est sain".
+  const anomalyLookup = verification.anomalyLookup;
+  const anomaliesCount = anomalyLookup.anomalies.length;
+  const checkingCount = verification.counts.pending + anomalyLookup.pending;
 
   const endMutation = useMutation({
     mutationFn: async () => {
@@ -449,13 +443,17 @@ export function Vols() {
           <span className="text-[13px] text-brand-gray dark:text-white/60">Aucune image capturée pour l'instant.</span>
         ) : (
           <>
-            {verification.counts.pending > 0 && (
+            {checkingCount > 0 && (
               <Badge variant="pending">
                 <Loader2 size={12} className="animate-spin" />
-                {verification.counts.verified + verification.counts.failed}/{verification.counts.total} vérifiées
+                {verification.counts.pending > 0
+                  ? `${verification.counts.verified + verification.counts.failed}/${verification.counts.total} vérifiées`
+                  : "Récupération des résultats…"}
               </Badge>
             )}
-            {verification.counts.pending === 0 && verification.counts.failed === 0 && anomaliesCount === 0 && (
+            {/* "Sain" n'est affirmé que si chaque image est analysée ET relue
+                sans erreur — jamais par défaut quand une lecture a échoué. */}
+            {checkingCount === 0 && verification.counts.failed === 0 && anomalyLookup.complete && anomaliesCount === 0 && (
               <Badge variant="success">
                 <CheckCircle2 size={12} />
                 Tout est sain — {verification.counts.total} image{verification.counts.total > 1 ? "s" : ""} vérifiée
@@ -477,6 +475,20 @@ export function Vols() {
                 </Badge>
                 <button
                   onClick={verification.retryFailed}
+                  className="text-[12px] font-semibold text-brand-blue hover:underline dark:text-white/90"
+                >
+                  Réessayer
+                </button>
+              </>
+            )}
+            {anomalyLookup.failed > 0 && (
+              <>
+                <Badge variant="high">
+                  <XCircle size={12} />
+                  Résultats de {anomalyLookup.failed} image{anomalyLookup.failed > 1 ? "s" : ""} non récupérés
+                </Badge>
+                <button
+                  onClick={anomalyLookup.retry}
                   className="text-[12px] font-semibold text-brand-blue hover:underline dark:text-white/90"
                 >
                   Réessayer

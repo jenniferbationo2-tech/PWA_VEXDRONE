@@ -4,6 +4,7 @@ import { api } from "@/lib/api/client";
 import type { MissionImage } from "@/lib/api/types";
 import { autoRetryStuckImages, createRetryTracker, retryFailedImages, summarizeImages } from "./verifyImages";
 import type { ImageVerificationCounts } from "./verifyImages";
+import { useImagesAnomalies, type AnomalyLookup } from "./useImageAnomalies";
 
 const POLL_INTERVAL_MS = 4000;
 
@@ -15,6 +16,9 @@ export interface UseAnalysisVerificationResult {
   // c'est un succes, voir counts.failed pour ca.
   allResolved: boolean;
   retryFailed: () => void;
+  // Anomalies de la mission, relues image par image — la seule base pour
+  // afficher "tout est sain" (et seulement si anomalyLookup.complete).
+  anomalyLookup: AnomalyLookup;
 }
 
 // Moteur de verification IA pour une mission, partage entre Vols.tsx (vol en
@@ -48,8 +52,10 @@ export function useAnalysisVerification(
   }, [images]);
 
   const counts = summarizeImages(images ?? []);
+  const anomalyLookup = useImagesAnomalies(enabled ? images ?? [] : []);
 
   return {
+    anomalyLookup,
     images: images ?? [],
     counts,
     allResolved: enabled && counts.pending === 0,

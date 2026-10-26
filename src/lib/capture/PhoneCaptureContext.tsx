@@ -214,12 +214,7 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
   }, [flight?.missionId]);
 
   const verification = useAnalysisVerification(watchedMissionId, { enabled: !!watchedMissionId });
-  const { data: watchedAnomalies } = useQuery({
-    queryKey: ["anomalies"],
-    queryFn: api.getAnomalies,
-    enabled: !!watchedMissionId,
-    refetchInterval: 4000,
-  });
+  const anomalyLookup = verification.anomalyLookup;
   const watchedMission = missions?.find((m) => m.id === watchedMissionId);
   const missionEnded = watchedMission?.status === "terminee";
   const notifiedMissionsRef = useRef<Set<string>>(new Set());
@@ -233,10 +228,13 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
     if (!watchedMissionId || !missionEnded) return;
     if (verification.counts.total === 0) return;
     if (!verification.allResolved) return;
+    // Attend aussi la relecture des anomalies image par image : notifier
+    // avant, c'etait conclure "sain" sur des resultats pas encore lus.
+    if (anomalyLookup.pending > 0) return;
     if (notifiedMissionsRef.current.has(watchedMissionId)) return;
     notifiedMissionsRef.current.add(watchedMissionId);
 
-    const anomaliesCount = watchedAnomalies?.filter((a) => a.missionId === watchedMissionId).length ?? 0;
+    const anomaliesCount = anomalyLookup.anomalies.length;
     if (verification.counts.failed > 0) {
       addNotification({
         title: "Vérification terminée avec erreurs",
@@ -249,13 +247,30 @@ export function PhoneCaptureProvider({ children }: { children: ReactNode }) {
         message: `${anomaliesCount} anomalie(s) détectée(s) sur cette mission.`,
         link: "/anomalies",
       });
+    } else if (anomalyLookup.failed > 0) {
+      // Rien trouvé ne veut pas dire sain si des résultats manquent.
+      addNotification({
+        title: "Vérification incomplète",
+        message: `Les résultats de ${anomalyLookup.failed} image(s) n'ont pas pu être récupérés — réessaie depuis l'écran Vols.`,
+        link: "/vols",
+      });
     } else {
       addNotification({
         title: "Vérification terminée",
         message: "Toutes les images sont saines, aucune anomalie détectée.",
       });
     }
-  }, [watchedMissionId, missionEnded, verification.allResolved, verification.counts.total, verification.counts.failed, watchedAnomalies, addNotification]);
+  }, [
+    watchedMissionId,
+    missionEnded,
+    verification.allResolved,
+    verification.counts.total,
+    verification.counts.failed,
+    anomalyLookup.pending,
+    anomalyLookup.failed,
+    anomalyLookup.anomalies.length,
+    addNotification,
+  ]);
 
   async function captureOnce(missionId: string, flightId: string) {
     const video = videoRef.current;

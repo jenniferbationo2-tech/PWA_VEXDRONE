@@ -349,31 +349,83 @@ function userIdSortKey(user: PlatformUser): number {
   return Number(user.id.match(/\d+/)?.[0] ?? 0);
 }
 
-// 100 = max accepté par l'API (comme getMissionImages/getReports/getPlatformUsers).
-// Important ici en particulier : le backend n'expose aucun param de tri
-// (confirmé sur le schema live, cf. commentaire sur getEntrepriseMissions) —
-// avec le defaut precedent de 20, une fois plus de 20 anomalies accumulees
-// au total (courant sur ce backend de demo/test partage), la plus recente
-// pouvait tomber hors de la page recue et ne jamais s'afficher, y compris
-// pour la mission qu'on vient de lancer (voir currentMission.ts).
-async function fetchAnomaliesWithImages(itemsPerPage = 100): Promise<Anomaly[]> {
-  const raw = await apiFetch<{ data: BackendAnomaly[] }>(`/api/v1/anomalies/?items_per_page=${itemsPerPage}`);
-  const imageUuids = [...new Set(raw.data.map((a) => a.image_uuid))];
+// Borne le nombre de requetes de lecture en vol en meme temps. Sans ca,
+// fetchAnomaliesWithImages lancait un GET /images/{uuid} par anomalie, tous
+// d'un coup, toutes les 4 s (polling Vols.tsx) : la rafale saturait le proxy
+// Vite/Render, d'ou des TimeoutError et des 500 — avales plus bas, ils
+// laissaient des anomalies sans mission, comptees 0 → faux "Tout est sain"
+// (diagnostic du 2026-09-29, voir BACKEND_REQUESTS.md §11). Un slot libere
+// est passe directement au suivant en file, pour ne jamais depasser `max`.
+function createLimiter(max: number) {
+  let active = 0;
+  const waiting: (() => void)[] = [];
+  return async function limit<T>(task: () => Promise<T>): Promise<T> {
+    if (active >= max) await new Promise<void>((resolve) => waiting.push(resolve));
+    else active++;
+    try {
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next) next();
+      else active--;
+    }
+  };
+}
+const lookupLimit = createLimiter(4);
+
+// Le backend n'expose aucun param de tri (schema live) et plafonne
+// items_per_page a 100 : lire seulement la 1re page faisait disparaitre des
+// enregistrements des qu'il y en avait plus de 100 (184 anomalies constatees
+// le 2026-09-29, has_more: true). On suit has_more jusqu'au bout, avec un
+// garde-fou sur le nombre de pages, et on dedoublonne par uuid — sans tri
+// stable, un enregistrement cree entre deux pages peut decaler l'ordre.
+const MAX_PAGES = 50;
+async function fetchAllPages<T extends { uuid: string }>(path: string): Promise<T[]> {
+  const sep = path.includes("?") ? "&" : "?";
+  const byUuid = new Map<string, T>();
+  for (let page = 1; page <= MAX_PAGES; page++) {
+    const res = await apiFetch<{ data: T[]; has_more?: boolean }>(`${path}${sep}page=${page}&items_per_page=100`);
+    for (const item of res.data) byUuid.set(item.uuid, item);
+    if (!res.has_more) break;
+  }
+  return [...byUuid.values()];
+}
+
+// La mission et la position d'une image ne changent pas apres l'upload : on
+// ne la redemande jamais une fois obtenue (le polling ne coute plus qu'une
+// requete par nouvelle image). Un echec n'est pas mis en cache, pour etre
+// retente au prochain rafraichissement.
+const imageRequests = new Map<string, Promise<BackendImage>>();
+function fetchImageCached(uuid: string): Promise<BackendImage> {
+  let request = imageRequests.get(uuid);
+  if (!request) {
+    request = lookupLimit(() => apiFetch<BackendImage>(`/api/v1/images/${uuid}`));
+    imageRequests.set(uuid, request);
+    request.catch(() => imageRequests.delete(uuid));
+  }
+  return request;
+}
+
+// Liste globale (Carte, tableau de bord) : toutes les pages, images
+// resolues via le cache borne ci-dessus. Pour savoir si une mission ou une
+// image a des anomalies, ne PAS deriver de cette liste — utiliser
+// getImageAnomalies (voir useImageAnomalies.ts) : ici une image
+// injoignable laisse encore son anomalie sans mission.
+async function fetchAnomaliesWithImages(): Promise<Anomaly[]> {
+  const raw = await fetchAllPages<BackendAnomaly>("/api/v1/anomalies/");
+  const imageUuids = [...new Set(raw.map((a) => a.image_uuid))];
   const images = await Promise.all(
     imageUuids.map((uuid) =>
-      apiFetch<BackendImage>(`/api/v1/images/${uuid}`).catch((err) => {
-        // Avale l'echec (une image cassee ne doit pas faire planter toute la
-        // liste d'anomalies) mais logue-le : sans ca, une anomalie orpheline
-        // (image_uuid invalide, 404, ...) retombe silencieusement sur
-        // l'affichage par defaut ("Image indisponible", GPS 0,0000/0,0000)
-        // sans aucune trace pour distinguer une vraie absence d'un bug.
+      fetchImageCached(uuid).catch((err) => {
+        // Une image cassee ne doit pas faire planter toute la liste, mais on
+        // garde une trace pour distinguer une vraie absence d'un bug.
         console.error(`Image ${uuid} introuvable pour une anomalie liee :`, err);
         return null;
       })
     )
   );
   const imageByUuid = new Map(images.filter((i): i is BackendImage => i !== null).map((i) => [i.uuid, i]));
-  return sortByNewestFirst(raw.data.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid))), (a) => a.detectedAt);
+  return sortByNewestFirst(raw.map((a) => toAnomaly(a, imageByUuid.get(a.image_uuid))), (a) => a.detectedAt);
 }
 
 // Recompresse un fichier image avant l'upload — recommande par la doc
@@ -428,6 +480,8 @@ interface MediaJobState {
   fileCount: number;
   errorMessage?: string;
   failedCount?: number;
+  anomaliesCount?: number;
+  lookupFailedCount?: number;
 }
 const mediaJobs = new Map<string, MediaJobState>();
 
@@ -465,16 +519,19 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
     // (analysee/echec), avec relances bornees pour rattraper un declenchement
     // perdu (voir waitForImagesResolved) — ne declare "terminee" qu'une fois
     // ceci confirme, jamais juste apres la boucle d'appels ci-dessus.
-    const { failed } = await waitForImagesResolved(
-      async () => {
-        const images = await api.getMissionImages(missionId);
-        const idSet = new Set(imageIds);
-        return images.filter((img) => idSet.has(img.id));
-      },
-      { analyzeImage: api.analyzeImage }
-    );
+    const idSet = new Set(imageIds);
+    const batchImages = async () => (await api.getMissionImages(missionId)).filter((img) => idSet.has(img.id));
+    const { failed } = await waitForImagesResolved(batchImages, { analyzeImage: api.analyzeImage });
 
-    setJob({ status: "terminee", progress: 100, failedCount: failed });
+    // Phase 4 : relit les anomalies de chaque image analysee — le resultat
+    // reel, plutot que de laisser l'UI le deduire d'une absence. Une lecture
+    // qui echoue est comptee a part (lookupFailedCount), jamais comme 0.
+    const analysed = (await batchImages()).filter((img) => img.analysisStatus === "analysee");
+    const lookups = await Promise.allSettled(analysed.map((img) => api.getImageAnomalies(img)));
+    const anomaliesCount = lookups.reduce((n, r) => n + (r.status === "fulfilled" ? r.value.length : 0), 0);
+    const lookupFailedCount = lookups.filter((r) => r.status === "rejected").length;
+
+    setJob({ status: "terminee", progress: 100, failedCount: failed, anomaliesCount, lookupFailedCount });
   } catch (err) {
     setJob({
       status: "echouee",
@@ -488,7 +545,7 @@ async function runMediaAnalysis(jobId: string, files: File[], missionId: string)
 // a partir de /anomalies/. Le module drone expose lui /dashboard/stats pour
 // le reste (flotte, vols du jour, delta alertes critiques).
 async function computeAnomalyStats() {
-  const anomalies = await fetchAnomaliesWithImages(100);
+  const anomalies = await fetchAnomaliesWithImages();
 
   const severityBreakdown: DashboardSummary["severityBreakdown"] = (["eleve", "moyen", "faible"] as const).map(
     (severity) => ({ severity, count: anomalies.filter((a) => a.severity === severity).length })
@@ -778,16 +835,26 @@ export const api = {
       );
     }
     // items_per_page plafonné à 100 côté API (schéma live, GET /images/ :
-    // "maximum": 100) — 200 declenchait un 422 avant meme d'atteindre la
-    // logique metier. Une mission avec plus de 100 images ne remonterait
-    // que la 1ere page ; a repaginer si ce cas se presente en pratique.
-    const raw = await apiFetch<{ data: BackendImage[] }>(
-      `/api/v1/images/?mission_uuid=${missionId}&items_per_page=100`
-    );
-    return raw.data
-      .slice()
-      .sort((a, b) => b.created_at.localeCompare(a.created_at))
-      .map(toMissionImage);
+    // "maximum": 100) — fetchAllPages suit has_more au-dela.
+    const raw = await fetchAllPages<BackendImage>(`/api/v1/images/?mission_uuid=${missionId}`);
+    return raw.sort((a, b) => b.created_at.localeCompare(a.created_at)).map(toMissionImage);
+  },
+
+  // Anomalies d'UNE image, via le filtre image_uuid (schema live) — la seule
+  // source fiable pour dire si une image/mission a des anomalies. Remplace
+  // l'ancienne deduction depuis la liste globale, qui concluait "sain" des
+  // qu'une requete echouait (voir fetchAnomaliesWithImages). Mission et GPS
+  // viennent de l'image deja connue : aucune requete /images/ en plus.
+  getImageAnomalies: async (image: MissionImage): Promise<Anomaly[]> => {
+    if (USE_MOCKS) return delay([], 150);
+    const raw = await lookupLimit(() => fetchAllPages<BackendAnomaly>(`/api/v1/anomalies/?image_uuid=${image.id}`));
+    const imageRef = {
+      uuid: image.id,
+      mission_uuid: image.missionId,
+      latitude: image.gps?.lat ?? null,
+      longitude: image.gps?.lng ?? null,
+    };
+    return raw.map((a) => toAnomaly(a, imageRef));
   },
 
   // POST /vols/ passe directement le vol en "en_cours" — même moment que le

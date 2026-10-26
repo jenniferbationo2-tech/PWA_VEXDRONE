@@ -180,6 +180,9 @@ export interface MissionImage {
   missionId: string;
   analysisStatus: ImageAnalysisStatus;
   capturedAt: string;
+  // Porte par l'image cote backend (pas par l'anomalie) — garde ici pour
+  // construire les anomalies d'une image sans la redemander (getImageAnomalies).
+  gps?: { lat: number; lng: number };
 }
 
 export interface Report {
@@ -204,6 +207,11 @@ export interface MediaAnalysisJob {
   // malgre les relances (voir waitForImagesResolved) — un job "terminee"
   // avec failedCount > 0 doit rester nuance cote UI, pas un succes plein.
   failedCount?: number;
+  // Anomalies relues image par image apres l'analyse (GET /anomalies/?image_uuid=).
+  // lookupFailedCount > 0 : resultats de certaines images non recuperes — le
+  // lot ne doit alors jamais etre presente comme "sans anomalie".
+  anomaliesCount?: number;
+  lookupFailedCount?: number;
 }
 
 export interface DashboardSummary {

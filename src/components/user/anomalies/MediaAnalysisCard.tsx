@@ -97,15 +97,19 @@ export function MediaAnalysisCard() {
     notifiedJobRef.current = jobId;
     if (job.status === "terminee") {
       queryClient.invalidateQueries({ queryKey: ["anomalies"] });
+      queryClient.invalidateQueries({ queryKey: ["mission-images"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard-summary"] });
-      const failedCount = job.failedCount ?? 0;
+      const unverified = (job.failedCount ?? 0) + (job.lookupFailedCount ?? 0);
+      const anomaliesCount = job.anomaliesCount ?? 0;
       addNotification({
-        title: failedCount > 0 ? "Analyse terminée avec erreurs" : "Analyse terminée",
+        title: unverified > 0 ? "Analyse terminée avec erreurs" : "Analyse terminée",
         message:
-          failedCount > 0
-            ? `Votre rapport est prêt — ${failedCount} image(s) n'ont pas pu être vérifiées.`
-            : "Votre rapport d'analyse est prêt.",
-        link: "/rapports",
+          unverified > 0
+            ? `${anomaliesCount} anomalie(s) trouvée(s) — ${unverified} image(s) n'ont pas pu être vérifiées.`
+            : anomaliesCount > 0
+            ? `${anomaliesCount} anomalie(s) détectée(s).`
+            : "Aucune anomalie détectée.",
+        link: anomaliesCount > 0 ? "/anomalies" : "/rapports",
       });
     } else if (job.status === "echouee") {
       addNotification({
@@ -134,6 +138,11 @@ export function MediaAnalysisCard() {
     setJobId(null);
     analyzeMutation.reset();
   }
+
+  // Images non analysées + images analysées dont les anomalies n'ont pas pu
+  // être relues : dans les deux cas on ne peut pas affirmer "aucune anomalie".
+  const unverifiedCount = (job?.failedCount ?? 0) + (job?.lookupFailedCount ?? 0);
+  const anomaliesCount = job?.anomaliesCount ?? 0;
 
   const phase: "idle" | "ready" | "analyzing" | "success" | "error" =
     jobId && job
@@ -318,20 +327,29 @@ export function MediaAnalysisCard() {
 
       {phase === "success" && (
         <div className="py-4 text-center">
-          {(job?.failedCount ?? 0) > 0 ? (
+          {unverifiedCount > 0 ? (
             <>
               <AlertTriangle size={28} className="mx-auto mb-3 text-brand-orange" strokeWidth={1.75} />
               <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark dark:text-white">Analyse terminée avec erreurs</p>
               <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">
-                {job?.failedCount} image{(job?.failedCount ?? 0) > 1 ? "s n'ont" : " n'a"} pas pu être vérifiée
-                {(job?.failedCount ?? 0) > 1 ? "s" : ""} malgré plusieurs tentatives.
+                {anomaliesCount} anomalie{anomaliesCount > 1 ? "s" : ""} trouvée{anomaliesCount > 1 ? "s" : ""} —{" "}
+                {unverifiedCount} image{unverifiedCount > 1 ? "s n'ont" : " n'a"} pas pu être vérifiée
+                {unverifiedCount > 1 ? "s" : ""}, le résultat est incomplet.
               </p>
+            </>
+          ) : anomaliesCount > 0 ? (
+            <>
+              <AlertTriangle size={28} className="mx-auto mb-3 text-brand-orange" strokeWidth={1.75} />
+              <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark dark:text-white">
+                {anomaliesCount} anomalie{anomaliesCount > 1 ? "s" : ""} détectée{anomaliesCount > 1 ? "s" : ""}
+              </p>
+              <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">Le détail est dans « Résultat analyse » ci-dessous.</p>
             </>
           ) : (
             <>
               <CheckCircle2 size={28} className="mx-auto mb-3 text-status-success" strokeWidth={1.75} />
-              <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark dark:text-white">Analyse terminée</p>
-              <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">Votre rapport d'analyse est prêt.</p>
+              <p className="mb-1 text-[14px] font-semibold text-brand-blue-dark dark:text-white">Aucune anomalie détectée</p>
+              <p className="mb-4 text-[13px] text-brand-gray dark:text-white/60">Toutes les images ont été analysées et vérifiées.</p>
             </>
           )}
           <div className="flex items-center justify-center gap-2.5">

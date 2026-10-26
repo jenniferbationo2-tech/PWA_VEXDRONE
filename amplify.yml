@@ -1,0 +1,21 @@
+version: 1
+frontend:
+  phases:
+    preBuild:
+      commands:
+        # Image de build Amplify fournit nvm ; on fixe la version Node pour
+        # matcher ce que Netlify utilisait (NODE_VERSION=22, voir netlify.toml)
+        # et ce que CI (.github/workflows/ci.yml) verifie deja.
+        - nvm install 22
+        - nvm use 22
+        - npm ci
+    build:
+      commands:
+        - npm run build
+  artifacts:
+    baseDirectory: dist
+    files:
+      - '**/*'
+  cache:
+    paths:
+      - node_modules/**/*

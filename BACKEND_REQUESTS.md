@@ -107,4 +107,31 @@ Pour chaque besoin : endpoint(s) concerné(s), ce qui manque, pourquoi le fronte
 - Ajouter le domaine de prod Netlify (ex. `https://vexdrone.netlify.app` ou le domaine personnalisé retenu) à la liste `allow_origins` du `CORSMiddleware`.
 - Si des deploy previews Netlify sont utilisés pour tester avant merge (domaines `https://<hash>--vexdrone.netlify.app`, différents à chaque déploiement), prévoir soit un motif générique (regex sur le sous-domaine), soit accepter que seules les previews ne pourront pas taper l'API tant qu'elles ne sont pas explicitement whitelistées.
 
+## 11. Anomalies sans mission ni position : le frontend doit charger chaque image, ce qui a produit de faux verdicts « sain »
+
+**Endpoints concernés** : `GET /api/v1/anomalies/`, `AnomalyRead`, `GET /api/v1/images/{image_uuid}`.
+**Constaté (2026-09-29)** : des images avec des défauts réels étaient présentées comme saines (« Tout est sain » sur l'écran Vols, rapport de mission vide). Diagnostic fait avec l'utilisateur, étape par étape :
+- **Le modèle et le backend ne sont pas en cause.** Pour une image défectueuse (`3094e57b-56db-4325-8b8b-448347390441`), `statut_analyse` vaut `analysee` et `GET /anomalies/?image_uuid=…` renvoie bien 2 anomalies, dont `isolateur_casse` avec une confiance de 0,8979.
+- **La perte se produisait côté frontend.** `AnomalyRead` ne porte que `image_uuid` : ni `mission_uuid`, ni latitude/longitude. Pour savoir à quelle mission appartient une anomalie, le frontend devait appeler `GET /images/{uuid}` pour chacune. À chaque rafraîchissement (toutes les 4 s pendant un vol), ça faisait des dizaines de requêtes en parallèle. Sous cette charge, une partie échouait :
+  - `TimeoutError` au bout de 65 s ;
+  - **`500 Erreur inattendue`**, observé par exemple sur `GET /images/2b1062ba-4f94-45c4-975b-a38db3d75634`.
+
+  Une anomalie dont l'image n'avait pas pu être chargée se retrouvait sans mission, n'était donc comptée pour aucune, et l'écran concluait « sain ».
+- **Autre facteur** : `GET /anomalies/` renvoyait `total_count: 184`, `has_more: true`, sans aucun paramètre de tri. Le frontend ne lisait que la première page (100 éléments), donc 84 anomalies étaient invisibles.
+
+**Corrigé côté frontend (2026-09-29)** :
+- Les anomalies d'une mission sont désormais lues **image par image**, via `GET /anomalies/?image_uuid=…`, en réutilisant la mission et le GPS de l'image déjà connue.
+- Au plus 4 requêtes en même temps, et chaque image n'est relue qu'une fois.
+- Toutes les pages sont lues en suivant `has_more`.
+- L'écran n'affiche plus « sain » si une seule lecture a échoué ; il affiche « résultats incomplets — réessayer ».
+
+Ça règle le symptôme, mais ça coûte encore une requête par image, et la liste globale (carte, tableau de bord) dépend toujours de `GET /images/{uuid}`.
+
+**Proposition** :
+1. **Ajouter `mission_uuid`, `latitude` et `longitude` dans `AnomalyRead`**, dénormalisés depuis l'image. C'est la demande principale : elle supprime le besoin de charger les images pour afficher une anomalie, donc la source même du bug.
+2. **Ajouter un filtre `mission_uuid` sur `GET /anomalies/`**, sur le modèle de `GET /images/?mission_uuid=`, pour qu'un écran de mission lise ses anomalies en une seule requête au lieu d'une par image.
+3. **Chercher la cause du `500` sur `GET /images/{image_uuid}`** dans les logs serveur, par exemple sur l'image `2b1062ba-4f94-45c4-975b-a38db3d75634` le 2026-09-29. Une simple lecture de métadonnées ne devrait jamais planter. Pistes à vérifier : pool de connexions à la base saturé par des requêtes simultanées, ou image supprimée (suppression logique) encore référencée par une anomalie.
+4. **Ajouter un paramètre de tri** sur les listes paginées (au minimum `created_at` décroissant sur `/anomalies/` et `/images/`). Sans tri stable, un enregistrement créé pendant la lecture des pages peut décaler l'ordre et faire apparaître ou disparaître des éléments.
+5. **Facultatif** : exposer `nombre_anomalies` sur `ImageRead`. Cette valeur existe déjà dans la réponse de l'analyse groupée (`ImageAnalyseResultat`). Elle permettrait d'afficher le résultat d'une image sans aucune requête supplémentaire.
+
 *(entrées suivantes ajoutées au fil de la construction des écrans Techniciens / Missions entreprise)*

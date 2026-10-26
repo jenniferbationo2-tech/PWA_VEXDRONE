@@ -151,7 +151,10 @@ export function toPlatformUser(raw: BackendPlatformUser): PlatformUser {
 
 // Nécessite l'image associée pour obtenir la position GPS
 // (le backend stocke lat/lng sur l'image, pas sur l'anomalie elle-même).
-export function toAnomaly(raw: BackendAnomaly, image?: BackendImage): Anomaly {
+export function toAnomaly(
+  raw: BackendAnomaly,
+  image?: Pick<BackendImage, "uuid" | "mission_uuid" | "latitude" | "longitude">
+): Anomaly {
   return {
     id: raw.uuid,
     type: toAnomalyTypeLabel(raw.type_anomalie),
@@ -207,6 +210,7 @@ export function toMissionImage(raw: BackendImage): MissionImage {
     missionId: raw.mission_uuid,
     analysisStatus: toImageAnalysisStatus(raw.statut_analyse),
     capturedAt: raw.date_capture ?? raw.created_at,
+    gps: raw.latitude != null && raw.longitude != null ? { lat: raw.latitude, lng: raw.longitude } : undefined,
   };
 }
 

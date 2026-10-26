@@ -16,6 +16,7 @@ interface InternalJob {
   // waitForImagesResolved cote reel) — permet de tester l'etat "terminee
   // avec erreurs" de MediaAnalysisCard sans backend reel.
   failedCount: number;
+  anomaliesCount: number;
 }
 
 const jobs = new Map<string, InternalJob>();
@@ -32,6 +33,8 @@ export function startMockAnalysisJob(fileCount: number): MediaAnalysisJob {
     // même laisser une image non vérifiée après relances (cas réel couvert
     // par waitForImagesResolved).
     failedCount: fileCount > 1 && Math.random() < 0.2 ? 1 : 0,
+    // Nombre d'anomalies relues apres analyse (voir runMediaAnalysis, phase 4).
+    anomaliesCount: Math.floor(Math.random() * (fileCount + 1)),
   };
   jobs.set(id, job);
   return computeJobState(id, job);
@@ -56,7 +59,7 @@ function computeJobState(id: string, job: InternalJob): MediaAnalysisJob {
           errorMessage:
             "Le serveur d'analyse n'a pas pu traiter un ou plusieurs fichiers (format non supporté ou fichier corrompu).",
         }
-      : { id, status: "terminee", progress: 100, fileCount: job.fileCount, failedCount: job.failedCount };
+      : { id, status: "terminee", progress: 100, fileCount: job.fileCount, failedCount: job.failedCount, anomaliesCount: job.anomaliesCount };
   }
 
   return {

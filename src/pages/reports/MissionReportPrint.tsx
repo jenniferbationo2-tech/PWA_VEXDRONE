@@ -17,6 +17,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { api } from "@/lib/api/client";
+import { useMissionAnomalies } from "@/lib/analysis/useImageAnomalies";
 import { useAuth } from "@/lib/Auth/AuthContext";
 import type { Anomaly, Mission, Severity } from "@/lib/api/types";
 import { getEffectiveStatus, MISSION_STATUS_BADGE, formatMissionDateRange } from "@/lib/missionStatus";
@@ -132,9 +133,22 @@ interface CoverPageProps {
   reportNo: string;
   generatedAt: Date;
   totalPages: number;
+  // Au moins une image dont les anomalies n'ont pas pu etre relues : on ne
+  // peut alors pas ecrire "aucune anomalie", seulement "resultats incomplets".
+  incomplete: boolean;
 }
 
-function CoverPage({ mission, technicienName, anomalies, structure, onStructureChange, reportNo, generatedAt, totalPages }: CoverPageProps) {
+function CoverPage({
+  mission,
+  technicienName,
+  anomalies,
+  structure,
+  onStructureChange,
+  reportNo,
+  generatedAt,
+  totalPages,
+  incomplete,
+}: CoverPageProps) {
   const effectiveStatus = getEffectiveStatus(mission);
   const bySeverity: Record<Severity, number> = { eleve: 0, moyen: 0, faible: 0 };
   for (const a of anomalies) bySeverity[a.severity]++;
@@ -154,7 +168,7 @@ function CoverPage({ mission, technicienName, anomalies, structure, onStructureC
           { icon: User, label: "Technicien", value: technicienName },
           { icon: MapPin, label: "Zone", value: mission.zone },
           { icon: Calendar, label: "Période", value: formatMissionDateRange(mission.dateDebut, mission.dateFin) },
-          { icon: Tags, label: "Anomalies détectées", value: String(anomalies.length) },
+          { icon: Tags, label: "Anomalies détectées", value: incomplete ? `${anomalies.length} (incomplet)` : String(anomalies.length) },
         ]}
       />
 
@@ -180,8 +194,15 @@ function CoverPage({ mission, technicienName, anomalies, structure, onStructureC
 
       <div className="rounded-md border border-brand-blue/10 p-5">
         <p className="mb-3 text-[12px] font-semibold uppercase tracking-wide text-brand-gray">Répartition des anomalies</p>
+        {incomplete && (
+          <p className="mb-3 text-[13px] font-semibold text-brand-orange">
+            Résultats incomplets : certaines images n'ont pas pu être vérifiées au moment de générer ce rapport.
+          </p>
+        )}
         {anomalies.length === 0 ? (
-          <p className="text-[13px] text-brand-gray">Aucune anomalie détectée sur cette mission.</p>
+          <p className="text-[13px] text-brand-gray">
+            {incomplete ? "Aucune anomalie récupérée pour l'instant." : "Aucune anomalie détectée sur cette mission."}
+          </p>
         ) : (
           <div className="flex flex-wrap gap-2">
             {(["eleve", "moyen", "faible"] as Severity[])
@@ -330,16 +351,14 @@ export function MissionReportPrint() {
     queryKey: ["missions"],
     queryFn: api.getMissions,
   });
-  const { data: allAnomalies, isLoading: anomaliesLoading } = useQuery({
-    queryKey: ["anomalies"],
-    queryFn: api.getAnomalies,
-  });
+  // Relues image par image (voir useImageAnomalies.ts) : filtrer la liste
+  // globale rendait le rapport vide des qu'une requete /images/ echouait.
+  const missionAnomalies = useMissionAnomalies(missionId);
+  const anomaliesLoading = missionAnomalies.isLoading || missionAnomalies.pending > 0;
+  const anomalies = missionAnomalies.anomalies;
+  const incomplete = missionAnomalies.isError || missionAnomalies.failed > 0;
 
   const mission = missions?.find((m) => m.id === missionId);
-  const anomalies = useMemo(
-    () => (allAnomalies ?? []).filter((a) => a.missionId === missionId),
-    [allAnomalies, missionId]
-  );
 
   const [structure, setStructure] = useState("");
   useEffect(() => {
@@ -395,6 +414,18 @@ export function MissionReportPrint() {
         </button>
       </div>
 
+      {missionAnomalies.failed > 0 && (
+        <div className="mx-auto mb-6 flex w-full max-w-[860px] items-center justify-between gap-3 rounded-sm border border-brand-orange/30 bg-brand-orange/[0.06] px-4 py-2.5 text-[13px] text-brand-blue-dark print:hidden">
+          <span>
+            ⚠ Résultats de {missionAnomalies.failed} image{missionAnomalies.failed > 1 ? "s" : ""} non récupérés — le
+            rapport est incomplet.
+          </span>
+          <button onClick={missionAnomalies.retry} className="font-semibold text-brand-blue hover:underline">
+            Réessayer
+          </button>
+        </div>
+      )}
+
       <CoverPage
         mission={mission}
         technicienName={user?.name ?? user?.username ?? "—"}
@@ -404,6 +435,7 @@ export function MissionReportPrint() {
         reportNo={reportNo}
         generatedAt={generatedAt}
         totalPages={totalPages}
+        incomplete={incomplete}
       />
 
       {anomalies.map((anomaly, i) => (

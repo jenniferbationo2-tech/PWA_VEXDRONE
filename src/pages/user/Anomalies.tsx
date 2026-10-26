@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { CardTitle } from "@/components/ui/card";
 import { MediaAnalysisCard } from "@/components/user/anomalies/MediaAnalysisCard";
 import { getCurrentMissionId } from "@/lib/currentMission";
+import { useMissionAnomalies } from "@/lib/analysis/useImageAnomalies";
 import { cn, formatRelativeTime } from "@/lib/utils";
 import { TableSkeleton } from "@/components/ui/TableSkeleton";
 
@@ -15,15 +16,10 @@ const severityVariant = { eleve: "high", moyen: "medium", faible: "low" } as con
 const severityLabel = { eleve: "Élevé", moyen: "Moyen", faible: "Faible" } as const;
 
 export function Anomalies() {
-  const { data: anomalies, isLoading, isError } = useQuery({
-    queryKey: ["anomalies"],
-    queryFn: api.getAnomalies,
-  });
-
   // Reutilise le cache de la page Missions si deja charge. Le backend ne met
   // pas encore la zone directement sur l'anomalie : on la derive via la
   // mission, comme le nom (voir le TODO dans mappers.ts).
-  const { data: missions } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
+  const { data: missions, isPending: missionsLoading } = useQuery({ queryKey: ["missions"], queryFn: api.getMissions });
 
   function missionName(missionId: string) {
     return missions?.find((m) => m.id === missionId)?.name ?? "Mission inconnue";
@@ -44,9 +40,14 @@ export function Anomalies() {
   // un tableau vide alors qu'une mission est en cours.
   const currentMissionId = getCurrentMissionId() ?? missions?.find((m) => m.status !== "en_attente")?.id ?? null;
 
-  // Pas de filtre par statut ici : une anomalie fraîchement détectée doit
-  // remonter automatiquement sans que le technicien ait à changer d'onglet.
-  const filtered = currentMissionId ? (anomalies ?? []).filter((a) => a.missionId === currentMissionId) : [];
+  // Anomalies de la mission courante, relues image par image (voir
+  // useImageAnomalies.ts) plutôt que filtrées depuis la liste globale — où
+  // une requête /images/ en échec faisait disparaître l'anomalie. Pas de
+  // filtre par statut : une anomalie fraîchement détectée remonte d'elle-même.
+  const missionAnomalies = useMissionAnomalies(currentMissionId ?? undefined);
+  const filtered = missionAnomalies.anomalies;
+  const isLoading = missionsLoading || missionAnomalies.isLoading || (missionAnomalies.pending > 0 && filtered.length === 0);
+  const isError = missionAnomalies.isError;
 
   const selected = filtered.find((a) => a.id === selectedId) ?? filtered[0] ?? null;
 
@@ -67,6 +68,17 @@ export function Anomalies() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-5">
         <div className="lg:col-span-3">
           <CardTitle className="mb-3">Résultat analyse</CardTitle>
+          {missionAnomalies.failed > 0 && (
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-sm border border-brand-orange/30 bg-brand-orange/[0.06] px-3 py-2 text-[13px] text-brand-blue-dark dark:text-white">
+              <span>
+                ⚠ Résultats de {missionAnomalies.failed} image{missionAnomalies.failed > 1 ? "s" : ""} non récupérés — la liste
+                peut être incomplète.
+              </span>
+              <button onClick={missionAnomalies.retry} className="font-semibold text-brand-blue hover:underline dark:text-white">
+                Réessayer
+              </button>
+            </div>
+          )}
           {isLoading ? (
             <TableSkeleton columns={5} />
           ) : isError ? (
@@ -76,8 +88,17 @@ export function Anomalies() {
             </div>
           ) : filtered.length === 0 ? (
             <div className="flex h-40 flex-col items-center justify-center rounded-lg border border-brand-blue/[0.06] bg-white text-center shadow-card dark:border-white/10 dark:bg-brand-blue-dark dark:shadow-none">
-              <p className="font-semibold text-brand-blue-dark dark:text-white">Aucune anomalie détectée</p>
-              <p className="mt-1 text-[13px] text-brand-gray dark:text-white/60">Lance une analyse pour voir apparaître des résultats ici.</p>
+              {missionAnomalies.complete ? (
+                <>
+                  <p className="font-semibold text-brand-blue-dark dark:text-white">Aucune anomalie détectée</p>
+                  <p className="mt-1 text-[13px] text-brand-gray dark:text-white/60">Lance une analyse pour voir apparaître des résultats ici.</p>
+                </>
+              ) : (
+                <>
+                  <p className="font-semibold text-brand-blue-dark dark:text-white">Résultats incomplets</p>
+                  <p className="mt-1 text-[13px] text-brand-gray dark:text-white/60">Impossible de confirmer l'absence d'anomalie pour l'instant.</p>
+                </>
+              )}
             </div>
           ) : (
             <>

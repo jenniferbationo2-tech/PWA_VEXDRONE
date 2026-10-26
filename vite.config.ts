@@ -10,12 +10,12 @@ export default defineConfig({
     react(),
     basicSsl(),
     // Genere dist/stats.html (treemap de la taille des chunks) uniquement si
-    // ANALYZE=true — n'affecte jamais un build normal (Netlify, dev, CI).
+    // ANALYZE=true — n'affecte jamais un build normal (Netlify/Amplify, dev, CI).
     process.env.ANALYZE === "true" &&
       visualizer({ filename: "dist/stats.html", gzipSize: true, brotliSize: true, template: "treemap" }),
     VitePWA({
-      // registerType: "autoUpdate" — une nouvelle version deployee (Netlify)
-      // remplace le service worker en cache au prochain chargement, plutot
+      // registerType: "autoUpdate" — une nouvelle version deployee (Netlify
+      // ou Amplify) remplace le service worker en cache au prochain chargement, plutot
       // que de laisser un technicien coince sur une UI perimee sans le savoir.
       registerType: "autoUpdate",
       // Desactive en dev : evite toute interference du service worker avec

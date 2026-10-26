@@ -1,6 +1,6 @@
 import * as Sentry from "@sentry/react";
 
-// Suivi d'erreurs minimal : uniquement en prod (build Netlify), et seulement
+// Suivi d'erreurs minimal : uniquement en prod (build Netlify ou Amplify), et seulement
 // si un DSN est configure — no-op silencieux sinon (dev local, CI, ou avant
 // que le compte Sentry soit cree). Pas de tracing de performance ni de
 // session replay : juste la capture d'exceptions/rejets non geres, qui est
